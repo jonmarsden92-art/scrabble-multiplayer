@@ -1,4 +1,3 @@
-cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -7,19 +6,15 @@ cat > index.html << 'EOF'
     <title>Scrabble Multiplayer</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Arial, sans-serif;
             background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
-            margin: 0;
             padding: 20px;
             color: white;
         }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            text-align: center;
-        }
+        .container { max-width: 800px; margin: 0 auto; text-align: center; }
         .join-screen {
             background: rgba(255,255,255,0.1);
             border-radius: 20px;
@@ -27,9 +22,9 @@ cat > index.html << 'EOF'
             margin-top: 50px;
         }
         input, button {
-            padding: 10px;
+            padding: 12px 20px;
             margin: 10px;
-            border-radius: 5px;
+            border-radius: 8px;
             border: none;
             font-size: 16px;
         }
@@ -39,13 +34,8 @@ cat > index.html << 'EOF'
             cursor: pointer;
             transition: all 0.3s;
         }
-        button:hover {
-            background: #45a049;
-            transform: translateY(-2px);
-        }
-        .game-container {
-            display: none;
-        }
+        button:hover { background: #45a049; transform: translateY(-2px); }
+        .game-container { display: none; }
         .board {
             display: grid;
             grid-template-columns: repeat(15, 35px);
@@ -62,11 +52,6 @@ cat > index.html << 'EOF'
             justify-content: center;
             font-size: 12px;
             cursor: pointer;
-            transition: all 0.2s;
-        }
-        .cell:hover {
-            transform: scale(1.05);
-            z-index: 1;
         }
         .rack {
             display: flex;
@@ -86,20 +71,17 @@ cat > index.html << 'EOF'
             font-size: 24px;
             font-weight: bold;
             cursor: pointer;
-            transition: all 0.2s;
             position: relative;
+            color: #2c1810;
         }
-        .rack-tile:hover {
-            transform: translateY(-5px);
-        }
-        .selected {
+        .rack-tile.selected {
             border: 3px solid gold;
             transform: translateY(-10px);
         }
         .player-info {
             display: inline-block;
             margin: 20px;
-            padding: 10px;
+            padding: 15px;
             background: rgba(0,0,0,0.5);
             border-radius: 10px;
             min-width: 150px;
@@ -107,28 +89,22 @@ cat > index.html << 'EOF'
         .active {
             border: 2px solid gold;
             background: rgba(255,215,0,0.2);
-            box-shadow: 0 0 20px rgba(255,215,0,0.3);
         }
         #message {
             margin: 10px;
             padding: 10px;
             background: rgba(0,0,0,0.5);
             border-radius: 10px;
-            font-weight: bold;
         }
-        .game-id-display {
+        .game-code {
             background: #000;
             padding: 15px;
             border-radius: 10px;
+            font-size: 28px;
             font-family: monospace;
-            font-size: 24px;
-            letter-spacing: 2px;
             margin: 10px 0;
         }
-        .error {
-            color: #ff6b6b;
-            margin-top: 10px;
-        }
+        .status { margin-top: 20px; color: #ffd700; }
     </style>
 </head>
 <body>
@@ -137,52 +113,50 @@ cat > index.html << 'EOF'
         
         <!-- Join Screen -->
         <div id="joinScreen" class="join-screen">
-            <button id="createGameBtn">Create New Game</button>
-            <button id="joinGameBtn">Join Existing Game</button>
+            <h2>Welcome!</h2>
+            <button id="createBtn">🎮 Create New Game</button>
+            <button id="joinBtn">🔗 Join Existing Game</button>
             
-            <div id="createDiv" style="display:none; margin-top:20px;">
-                <input type="text" id="createName" placeholder="Your Name" autocomplete="off">
-                <button id="confirmCreateBtn">Create Game</button>
-                <button id="cancelCreateBtn">Cancel</button>
+            <div id="createPanel" style="display:none; margin-top:20px;">
+                <input type="text" id="playerName" placeholder="Your Name" autocomplete="off">
+                <button id="confirmCreate">Create Game</button>
+                <button id="cancelCreate">Cancel</button>
             </div>
             
-            <div id="joinDiv" style="display:none; margin-top:20px;">
-                <input type="text" id="joinCode" placeholder="Game Code" autocomplete="off" style="text-transform:uppercase">
-                <input type="text" id="joinName" placeholder="Your Name" autocomplete="off">
-                <button id="confirmJoinBtn">Join Game</button>
-                <button id="cancelJoinBtn">Cancel</button>
+            <div id="joinPanel" style="display:none; margin-top:20px;">
+                <input type="text" id="gameCode" placeholder="Game Code" autocomplete="off" style="text-transform:uppercase">
+                <input type="text" id="joinPlayerName" placeholder="Your Name" autocomplete="off">
+                <button id="confirmJoin">Join Game</button>
+                <button id="cancelJoin">Cancel</button>
             </div>
             
-            <div id="waitingDiv" style="display:none; margin-top:20px;">
-                <h3>Share this code with Player 2:</h3>
-                <div class="game-id-display" id="gameCode"></div>
-                <button id="copyCodeBtn">📋 Copy Code</button>
-                <p style="margin-top:20px;">Waiting for second player to join...</p>
-                <div class="loader"></div>
+            <div id="waitingPanel" style="display:none; margin-top:20px;">
+                <h3>Share this code:</h3>
+                <div class="game-code" id="gameCodeDisplay"></div>
+                <button id="copyCode">📋 Copy Code</button>
+                <div class="status">⏳ Waiting for player 2 to join...</div>
             </div>
         </div>
         
         <!-- Game Container -->
         <div id="gameContainer" class="game-container">
             <div>
-                <div id="player1Info" class="player-info">
+                <div id="p1Info" class="player-info">
                     <strong id="p1Name">Player 1</strong><br>
                     Score: <span id="p1Score">0</span>
                 </div>
-                <div id="player2Info" class="player-info">
+                <div id="p2Info" class="player-info">
                     <strong id="p2Name">Player 2</strong><br>
                     Score: <span id="p2Score">0</span>
                 </div>
             </div>
             
-            <div id="board" class="board"></div>
-            
-            <div id="message">Waiting for game to start...</div>
-            
-            <div class="rack" id="rack"></div>
+            <div id="board"></div>
+            <div id="message">Loading game...</div>
+            <div id="rack" class="rack"></div>
             
             <div>
-                <button id="playBtn">▶ Play Word</button>
+                <button id="playWordBtn">▶ Play Word</button>
                 <button id="recallBtn">↩ Recall</button>
                 <button id="exchangeBtn">🔄 Exchange</button>
                 <button id="passBtn">⏭ Pass</button>
@@ -191,113 +165,125 @@ cat > index.html << 'EOF'
     </div>
 
     <script>
+        // Global variables
         let socket = null;
         let gameId = null;
-        let myPlayerNum = null;
-        let myRack = [];
+        let myPlayerNumber = null;
         let currentTurn = 1;
-        let selectedTile = null;
+        let myRack = [];
+        let selectedTileIndex = null;
         let placedTiles = new Map();
-        let board = Array(15).fill().map(() => Array(15).fill(null));
+        let boardData = Array(15).fill().map(() => Array(15).fill(null));
         
-        // DOM Elements
+        // DOM elements
         const joinScreen = document.getElementById('joinScreen');
         const gameContainer = document.getElementById('gameContainer');
-        const createDiv = document.getElementById('createDiv');
-        const joinDiv = document.getElementById('joinDiv');
-        const waitingDiv = document.getElementById('waitingDiv');
+        const createPanel = document.getElementById('createPanel');
+        const joinPanel = document.getElementById('joinPanel');
+        const waitingPanel = document.getElementById('waitingPanel');
         
-        // Button event listeners
-        document.getElementById('createGameBtn').onclick = () => {
-            createDiv.style.display = 'block';
-            joinDiv.style.display = 'none';
-            waitingDiv.style.display = 'none';
+        // Button handlers
+        document.getElementById('createBtn').onclick = () => {
+            createPanel.style.display = 'block';
+            joinPanel.style.display = 'none';
+            waitingPanel.style.display = 'none';
         };
         
-        document.getElementById('joinGameBtn').onclick = () => {
-            createDiv.style.display = 'none';
-            joinDiv.style.display = 'block';
-            waitingDiv.style.display = 'none';
+        document.getElementById('joinBtn').onclick = () => {
+            createPanel.style.display = 'none';
+            joinPanel.style.display = 'block';
+            waitingPanel.style.display = 'none';
         };
         
-        document.getElementById('cancelCreateBtn').onclick = () => {
-            createDiv.style.display = 'none';
+        document.getElementById('cancelCreate').onclick = () => {
+            createPanel.style.display = 'none';
         };
         
-        document.getElementById('cancelJoinBtn').onclick = () => {
-            joinDiv.style.display = 'none';
+        document.getElementById('cancelJoin').onclick = () => {
+            joinPanel.style.display = 'none';
         };
         
-        document.getElementById('confirmCreateBtn').onclick = createGame;
-        document.getElementById('confirmJoinBtn').onclick = joinGame;
-        document.getElementById('copyCodeBtn').onclick = copyCode;
-        
-        document.getElementById('playBtn').onclick = playWord;
-        document.getElementById('recallBtn').onclick = recallTiles;
-        document.getElementById('exchangeBtn').onclick = exchangeTile;
-        document.getElementById('passBtn').onclick = passTurn;
-        
-        function copyCode() {
-            const code = document.getElementById('gameCode').innerText;
-            navigator.clipboard.writeText(code);
-            alert('Game code copied: ' + code);
-        }
-        
-        function createGame() {
-            const name = document.getElementById('createName').value.trim();
-            if (!name) {
+        document.getElementById('confirmCreate').onclick = () => {
+            const playerName = document.getElementById('playerName').value.trim();
+            if (!playerName) {
                 alert('Please enter your name');
                 return;
             }
-            
-            console.log('Creating game with name:', name);
-            
-            // Connect to socket if not already connected
-            if (!socket) {
-                socket = io();
-                setupSocketListeners();
-            }
-            
-            socket.emit('createGame', { playerName: name }, (response) => {
-                console.log('Create game response:', response);
-                if (response.success) {
-                    gameId = response.gameId;
-                    myPlayerNum = response.playerNum;
-                    document.getElementById('gameCode').innerText = gameId;
-                    createDiv.style.display = 'none';
-                    waitingDiv.style.display = 'block';
-                } else {
-                    alert('Failed to create game: ' + (response.error || 'Unknown error'));
-                }
-            });
-        }
+            createGame(playerName);
+        };
         
-        function joinGame() {
-            const code = document.getElementById('joinCode').value.trim().toUpperCase();
-            const name = document.getElementById('joinName').value.trim();
-            
-            if (!code || !name) {
+        document.getElementById('confirmJoin').onclick = () => {
+            const code = document.getElementById('gameCode').value.trim().toUpperCase();
+            const playerName = document.getElementById('joinPlayerName').value.trim();
+            if (!code || !playerName) {
                 alert('Please enter game code and your name');
                 return;
             }
+            joinGame(code, playerName);
+        };
+        
+        document.getElementById('copyCode').onclick = () => {
+            const code = document.getElementById('gameCodeDisplay').innerText;
+            navigator.clipboard.writeText(code);
+            alert('Game code copied: ' + code);
+        };
+        
+        // Game functions
+        function createGame(playerName) {
+            console.log('Creating game for:', playerName);
             
-            console.log('Joining game:', code, name);
+            socket = io({
+                transports: ['websocket', 'polling']
+            });
             
-            // Connect to socket if not already connected
-            if (!socket) {
-                socket = io();
-                setupSocketListeners();
-            }
+            socket.on('connect', () => {
+                console.log('Socket connected! ID:', socket.id);
+                socket.emit('createGame', { playerName: playerName }, (response) => {
+                    console.log('Create game response:', response);
+                    if (response && response.success) {
+                        gameId = response.gameId;
+                        myPlayerNumber = response.playerNum;
+                        document.getElementById('gameCodeDisplay').innerText = gameId;
+                        createPanel.style.display = 'none';
+                        waitingPanel.style.display = 'block';
+                        setupGameListeners();
+                    } else {
+                        alert('Failed to create game: ' + (response?.error || 'Unknown error'));
+                    }
+                });
+            });
             
-            socket.emit('joinGame', { gameId: code, playerName: name }, (response) => {
-                console.log('Join game response:', response);
-                if (response.success) {
-                    gameId = code;
-                    myPlayerNum = response.playerNum;
-                    startGame();
-                } else {
-                    alert('Failed to join: ' + (response.error || 'Unknown error'));
-                }
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                alert('Failed to connect to server. Please refresh the page.');
+            });
+        }
+        
+        function joinGame(code, playerName) {
+            console.log('Joining game:', code, playerName);
+            
+            socket = io({
+                transports: ['websocket', 'polling']
+            });
+            
+            socket.on('connect', () => {
+                console.log('Socket connected! ID:', socket.id);
+                socket.emit('joinGame', { gameId: code, playerName: playerName }, (response) => {
+                    console.log('Join game response:', response);
+                    if (response && response.success) {
+                        gameId = code;
+                        myPlayerNumber = response.playerNum;
+                        startGame();
+                        setupGameListeners();
+                    } else {
+                        alert('Failed to join game: ' + (response?.error || 'Unknown error'));
+                    }
+                });
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Connection error:', error);
+                alert('Failed to connect to server. Please refresh the page.');
             });
         }
         
@@ -306,19 +292,10 @@ cat > index.html << 'EOF'
             gameContainer.style.display = 'block';
         }
         
-        function setupSocketListeners() {
-            socket.on('connect', () => {
-                console.log('Socket connected!', socket.id);
-            });
-            
-            socket.on('connect_error', (error) => {
-                console.error('Socket connection error:', error);
-                alert('Connection error! Please refresh the page.');
-            });
-            
+        function setupGameListeners() {
             socket.on('gameStateUpdate', (data) => {
-                console.log('Game state update:', data);
-                board = data.board;
+                console.log('Game state update received:', data);
+                boardData = data.board;
                 currentTurn = data.currentTurn;
                 
                 // Update player info
@@ -327,32 +304,35 @@ cat > index.html << 'EOF'
                 document.getElementById('p2Name').innerText = data.players[2].name || 'Waiting...';
                 document.getElementById('p2Score').innerText = data.players[2].score || 0;
                 
-                // Update active player highlight
-                document.getElementById('player1Info').classList.toggle('active', currentTurn === 1);
-                document.getElementById('player2Info').classList.toggle('active', currentTurn === 2);
+                // Highlight active player
+                document.getElementById('p1Info').classList.toggle('active', currentTurn === 1);
+                document.getElementById('p2Info').classList.toggle('active', currentTurn === 2);
                 
                 // Update my rack
-                if (myPlayerNum === 1) {
+                if (myPlayerNumber === 1) {
                     myRack = data.players[1].rack || [];
                 } else {
                     myRack = data.players[2].rack || [];
                 }
                 
                 // Update message
-                const isMyTurn = (currentTurn === myPlayerNum);
-                const messageDiv = document.getElementById('message');
-                
-                if (!isMyTurn && currentTurn) {
-                    messageDiv.innerText = `⏳ Waiting for Player ${currentTurn}'s turn...`;
-                } else if (isMyTurn) {
-                    messageDiv.innerText = '🎯 Your turn! Place tiles on the board and click Play Word';
+                const isMyTurn = (currentTurn === myPlayerNumber);
+                const msgDiv = document.getElementById('message');
+                if (isMyTurn) {
+                    msgDiv.innerHTML = '🎯 YOUR TURN - Place tiles and click Play Word!';
+                    msgDiv.style.background = 'rgba(76, 175, 80, 0.3)';
+                } else {
+                    msgDiv.innerHTML = `⏳ Waiting for Player ${currentTurn}'s turn...`;
+                    msgDiv.style.background = 'rgba(0,0,0,0.5)';
                 }
                 
                 if (data.lastPlay) {
-                    messageDiv.innerText = `🎉 Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
+                    msgDiv.innerHTML = `🎉 Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
                     setTimeout(() => {
                         if (isMyTurn) {
-                            messageDiv.innerText = '🎯 Your turn! Place tiles on the board and click Play Word';
+                            msgDiv.innerHTML = '🎯 YOUR TURN - Place tiles and click Play Word!';
+                        } else {
+                            msgDiv.innerHTML = `⏳ Waiting for Player ${currentTurn}'s turn...`;
                         }
                     }, 3000);
                 }
@@ -362,7 +342,7 @@ cat > index.html << 'EOF'
             });
             
             socket.on('playerDisconnected', (data) => {
-                alert(`⚠️ Player ${data.playerNum} disconnected! The game will end.`);
+                alert(`Player ${data.playerNum} disconnected! Game will end.`);
                 location.reload();
             });
         }
@@ -376,21 +356,21 @@ cat > index.html << 'EOF'
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     
-                    const tile = board[row][col];
-                    const placedTile = placedTiles.get(`${row},${col}`);
+                    const permanentTile = boardData[row][col];
+                    const myPlacedTile = placedTiles.get(`${row},${col}`);
                     
-                    if (placedTile) {
-                        cell.innerText = placedTile.letter;
+                    if (myPlacedTile) {
+                        cell.innerText = myPlacedTile.letter;
                         cell.style.background = '#c8e6c9';
                         cell.style.border = '2px solid #4caf50';
-                        cell.onclick = () => removePlacedTile(row, col);
-                    } else if (tile) {
-                        cell.innerText = tile.letter;
+                        cell.onclick = () => removeTile(row, col);
+                    } else if (permanentTile) {
+                        cell.innerText = permanentTile.letter;
                         cell.style.background = '#fffef5';
                     } else {
                         cell.style.background = '#f5deb3';
-                        if (currentTurn === myPlayerNum && !tile) {
-                            cell.onclick = () => selectBoardCell(row, col);
+                        if (currentTurn === myPlayerNumber) {
+                            cell.onclick = () => placeTile(row, col);
                         }
                     }
                     
@@ -399,43 +379,38 @@ cat > index.html << 'EOF'
             }
         }
         
-        function selectBoardCell(row, col) {
-            if (currentTurn !== myPlayerNum) {
+        function placeTile(row, col) {
+            if (currentTurn !== myPlayerNumber) {
                 alert('Not your turn!');
                 return;
             }
             
-            if (board[row][col] !== null) {
-                alert('Cell already occupied!');
+            if (boardData[row][col] !== null) {
+                alert('Cell already has a tile!');
                 return;
             }
             
-            if (placedTiles.has(`${row},${col}`)) {
-                removePlacedTile(row, col);
-                return;
-            }
-            
-            if (selectedTile === null) {
+            if (selectedTileIndex === null) {
                 alert('Select a tile from your rack first!');
                 return;
             }
             
-            const tile = myRack[selectedTile];
+            const tile = myRack[selectedTileIndex];
             if (!tile) return;
             
             placedTiles.set(`${row},${col}`, {
                 letter: tile,
-                rackIndex: selectedTile
+                rackIndex: selectedTileIndex
             });
             
-            myRack.splice(selectedTile, 1);
-            selectedTile = null;
+            myRack.splice(selectedTileIndex, 1);
+            selectedTileIndex = null;
             
             renderBoard();
             renderRack();
         }
         
-        function removePlacedTile(row, col) {
+        function removeTile(row, col) {
             const placed = placedTiles.get(`${row},${col}`);
             if (placed) {
                 myRack.splice(placed.rackIndex, 0, placed.letter);
@@ -450,54 +425,32 @@ cat > index.html << 'EOF'
             rackDiv.innerHTML = '';
             
             if (!myRack || myRack.length === 0) {
-                rackDiv.innerHTML = '<div style="color: #999;">No tiles in rack</div>';
+                rackDiv.innerHTML = '<div style="color:#999;">No tiles in rack</div>';
                 return;
             }
             
             myRack.forEach((tile, index) => {
                 const tileDiv = document.createElement('div');
                 tileDiv.className = 'rack-tile';
-                if (selectedTile === index) {
+                if (selectedTileIndex === index) {
                     tileDiv.classList.add('selected');
                 }
                 tileDiv.innerText = tile === '?' ? '?' : tile;
-                
-                // Add score indicator
-                const scores = {
-                    'A':1,'B':3,'C':3,'D':2,'E':1,'F':4,'G':2,'H':4,'I':1,'J':8,
-                    'K':5,'L':1,'M':3,'N':1,'O':1,'P':3,'Q':10,'R':1,'S':1,'T':1,
-                    'U':1,'V':4,'W':4,'X':8,'Y':4,'Z':10,'?':0
-                };
-                const score = scores[tile] || 1;
-                const scoreSpan = document.createElement('span');
-                scoreSpan.style.position = 'absolute';
-                scoreSpan.style.bottom = '2px';
-                scoreSpan.style.right = '4px';
-                scoreSpan.style.fontSize = '10px';
-                scoreSpan.innerText = score;
-                tileDiv.appendChild(scoreSpan);
-                
                 tileDiv.onclick = () => {
-                    if (currentTurn !== myPlayerNum) {
+                    if (currentTurn !== myPlayerNumber) {
                         alert('Not your turn!');
                         return;
                     }
-                    selectedTile = index;
+                    selectedTileIndex = index;
                     renderRack();
                 };
-                
                 rackDiv.appendChild(tileDiv);
             });
         }
         
         function calculateScore() {
             let total = 0;
-            const scores = {
-                'A':1,'B':3,'C':3,'D':2,'E':1,'F':4,'G':2,'H':4,'I':1,'J':8,
-                'K':5,'L':1,'M':3,'N':1,'O':1,'P':3,'Q':10,'R':1,'S':1,'T':1,
-                'U':1,'V':4,'W':4,'X':8,'Y':4,'Z':10,'?':0
-            };
-            
+            const scores = {A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10,'?':0};
             for (const [pos, data] of placedTiles) {
                 total += scores[data.letter] || 1;
             }
@@ -506,14 +459,14 @@ cat > index.html << 'EOF'
         
         function playWord() {
             if (placedTiles.size === 0) {
-                alert('No tiles placed on the board!');
+                alert('Place some tiles on the board first!');
                 return;
             }
             
             const word = Array.from(placedTiles.values()).map(t => t.letter).join('');
             const score = calculateScore();
             
-            console.log('Playing word:', word, 'score:', score);
+            console.log('Playing word:', word, 'Score:', score);
             
             socket.emit('playWord', {
                 gameId: gameId,
@@ -521,14 +474,14 @@ cat > index.html << 'EOF'
                 placements: Array.from(placedTiles.entries()),
                 score: score
             }, (response) => {
-                console.log('Play word response:', response);
-                if (response.success) {
+                console.log('Play response:', response);
+                if (response && response.success) {
                     placedTiles.clear();
-                    selectedTile = null;
+                    selectedTileIndex = null;
                     renderBoard();
                     renderRack();
                 } else {
-                    alert('Invalid word: ' + (response.error || 'Word not in dictionary'));
+                    alert('Invalid word! Try another word.');
                 }
             });
         }
@@ -538,45 +491,45 @@ cat > index.html << 'EOF'
                 myRack.splice(data.rackIndex, 0, data.letter);
             }
             placedTiles.clear();
-            selectedTile = null;
+            selectedTileIndex = null;
             renderBoard();
             renderRack();
         }
         
         function exchangeTile() {
-            if (selectedTile === null) {
-                alert('Select a tile from your rack to exchange!');
+            if (selectedTileIndex === null) {
+                alert('Select a tile to exchange');
                 return;
             }
             
-            const tileToExchange = myRack[selectedTile];
-            console.log('Exchanging tile:', tileToExchange);
-            
+            const tile = myRack[selectedTileIndex];
             socket.emit('exchangeTiles', {
                 gameId: gameId,
-                tiles: [tileToExchange]
+                tiles: [tile]
             }, (response) => {
-                console.log('Exchange response:', response);
-                if (response.success) {
-                    selectedTile = null;
+                if (response && response.success) {
+                    selectedTileIndex = null;
                 } else {
-                    alert('Failed to exchange: ' + (response.error || 'Unknown error'));
+                    alert('Exchange failed');
                 }
             });
         }
         
         function passTurn() {
-            console.log('Passing turn');
             socket.emit('passTurn', { gameId: gameId }, (response) => {
-                console.log('Pass turn response:', response);
-                if (response.success) {
+                if (response && response.success) {
                     recallTiles();
                 }
             });
         }
         
-        console.log('Game loaded! Ready to play.');
+        // Attach button handlers
+        document.getElementById('playWordBtn').onclick = playWord;
+        document.getElementById('recallBtn').onclick = recallTiles;
+        document.getElementById('exchangeBtn').onclick = exchangeTile;
+        document.getElementById('passBtn').onclick = passTurn;
+        
+        console.log('Game page loaded!');
     </script>
 </body>
 </html>
-EOF

@@ -1,7 +1,9 @@
+cat > server.js << 'EOF'
 const express = require('express');
 const http = require('http');
 const socketIO = require('socket.io');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -16,8 +18,82 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-const games = new Map();
+// ===== FULL SCRABBLE DICTIONARY =====
+console.log('📚 Loading Scrabble dictionary...');
 
+// Load dictionary from file or use built-in list
+let validWords = new Set();
+
+try {
+  // Try to load TWL dictionary first
+  if (fs.existsSync('twl.txt')) {
+    const dictionary = fs.readFileSync('twl.txt', 'utf8');
+    const words = dictionary.split('\n');
+    words.forEach(word => {
+      const trimmed = word.trim().toUpperCase();
+      if (trimmed.length >= 2) {
+        validWords.add(trimmed);
+      }
+    });
+    console.log(`✅ Loaded ${validWords.size} words from TWL dictionary`);
+  } 
+  // Try SOWPODS as fallback
+  else if (fs.existsSync('sowpods.txt')) {
+    const dictionary = fs.readFileSync('sowpods.txt', 'utf8');
+    const words = dictionary.split('\n');
+    words.forEach(word => {
+      const trimmed = word.trim().toUpperCase();
+      if (trimmed.length >= 2) {
+        validWords.add(trimmed);
+      }
+    });
+    console.log(`✅ Loaded ${validWords.size} words from SOWPODS dictionary`);
+  }
+  else {
+    // Fallback to built-in word list
+    console.log('⚠️ No dictionary file found. Using built-in word list.');
+    const basicWords = [
+      'AA', 'AB', 'AD', 'AE', 'AG', 'AH', 'AI', 'AL', 'AM', 'AN', 'AR', 'AS', 'AT', 'AW', 'AX', 'AY',
+      'BA', 'BE', 'BI', 'BO', 'BY', 'DA', 'DE', 'DO', 'ED', 'EF', 'EH', 'EL', 'EM', 'EN', 'ER', 'ES',
+      'ET', 'EX', 'FA', 'FE', 'GI', 'GO', 'HA', 'HE', 'HI', 'HM', 'HO', 'ID', 'IF', 'IN', 'IO', 'IS',
+      'IT', 'JO', 'KA', 'KI', 'LA', 'LI', 'LO', 'MA', 'ME', 'MI', 'MM', 'MO', 'MU', 'MY', 'NA', 'NE',
+      'NO', 'NU', 'OD', 'OE', 'OF', 'OH', 'OI', 'OM', 'ON', 'OP', 'OR', 'OS', 'OW', 'OX', 'OY', 'PA',
+      'PE', 'PI', 'PO', 'QI', 'RE', 'SH', 'SI', 'SO', 'ST', 'TA', 'TE', 'TI', 'TO', 'UG', 'UH', 'UM',
+      'UN', 'UP', 'US', 'UT', 'WE', 'WO', 'XI', 'XU', 'YA', 'YE', 'YO', 'ZA',
+      'CAT', 'DOG', 'BIRD', 'FISH', 'HAT', 'BAT', 'RAT', 'CAR', 'BUS', 'TRAIN',
+      'HOUSE', 'TREE', 'FLOWER', 'SUN', 'MOON', 'STAR', 'HELLO', 'WORLD', 'GAME',
+      'PLAY', 'WORD', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER', 'APPLE',
+      'BANANA', 'CHERRY', 'GRAPE', 'LEMON', 'ORANGE', 'PEAR', 'RED', 'BLUE', 'GREEN',
+      'YELLOW', 'BLACK', 'WHITE', 'HAPPY', 'SAD', 'BIG', 'SMALL', 'FAST', 'SLOW',
+      'HOT', 'COLD', 'WET', 'DRY', 'RUN', 'WALK', 'JUMP', 'SWIM', 'FLY', 'SIT',
+      'STAND', 'EAT', 'DRINK', 'SLEEP', 'MOM', 'DAD', 'SCHOOL', 'BOOK', 'PENCIL',
+      'PAPER', 'COMPUTER', 'PHONE', 'MUSIC', 'MOVIE', 'SPORT'
+    ];
+    basicWords.forEach(word => validWords.add(word));
+    console.log(`✅ Loaded ${validWords.size} words from built-in list`);
+  }
+} catch (error) {
+  console.error('Error loading dictionary:', error);
+  console.log('⚠️ Using minimal word list');
+}
+
+function isValidWord(word) {
+  if (word.length < 2) {
+    return false;
+  }
+  
+  const upperWord = word.toUpperCase();
+  const isValid = validWords.has(upperWord);
+  
+  if (!isValid) {
+    console.log(`   ❌ "${word}" is not in dictionary`);
+  }
+  
+  return isValid;
+}
+
+// ===== GAME LOGIC =====
+const games = new Map();
 const BOARD_SIZE = 15;
 const RACK_SIZE = 7;
 const BINGO_BONUS = 50;
@@ -162,17 +238,14 @@ io.on('connection', (socket) => {
     
     const gameState = getGameState(game);
     
-    // Send to player 2
     socket.emit('gameJoined', {
       success: true,
       playerNum: 2,
       gameState: gameState
     });
     
-    // Send to player 2 (immediate state)
     socket.emit('gameStateUpdate', gameState);
     
-    // Send to player 1 - IMPORTANT FIX
     const player1Socket = game.players[1].socketId;
     console.log(`📤 Sending game update to Player 1 (${player1Socket})`);
     io.to(player1Socket).emit('gameStateUpdate', gameState);
@@ -181,7 +254,6 @@ io.on('connection', (socket) => {
       gameState: gameState 
     });
     
-    // Broadcast to room
     io.to(gameId).emit('gameReady', { gameState: gameState });
   });
   
@@ -206,32 +278,55 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Apply placements
+    console.log(`\n📝 Word attempt: "${word}" by Player ${playerNum}`);
+    
+    // CHECK IF WORD IS VALID WITH FULL DICTIONARY
+    if (!isValidWord(word)) {
+      console.log(`   ❌ Rejected - "${word}" is not a valid Scrabble word`);
+      socket.emit('playFailed', { error: `"${word}" is not a valid Scrabble word` });
+      return;
+    }
+    
+    console.log(`   ✅ "${word}" is a valid Scrabble word!`);
+    console.log(`   Placements:`, placements);
+    
+    // Apply placements to board
     for (const [pos, letter] of placements) {
       const [row, col] = pos.split(',').map(Number);
       game.board[row][col] = { letter: letter, playedBy: playerNum };
+      console.log(`   Placed ${letter} at (${row}, ${col})`);
     }
     
+    // Update score
     game.players[playerNum].score += score;
-    if (word.length === 7) game.players[playerNum].score += BINGO_BONUS;
+    if (word.length === 7) {
+      game.players[playerNum].score += BINGO_BONUS;
+      console.log(`   BINGO! +${BINGO_BONUS} bonus`);
+    }
     
-    // Update rack
+    // Remove played letters from rack
     const wordLetters = word.split('');
     const currentRack = [...game.players[playerNum].rack];
+    
     for (let letter of wordLetters) {
       const index = currentRack.findIndex(l => l === letter);
-      if (index !== -1) currentRack.splice(index, 1);
+      if (index !== -1) {
+        currentRack.splice(index, 1);
+      }
     }
     
+    // Draw new letters
     const { drawn, bag } = drawLetters([...game.bag], wordLetters.length);
     game.players[playerNum].rack = [...currentRack, ...drawn];
     game.bag = bag;
+    
+    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
     const gameState = getGameState(game);
     gameState.lastPlay = { player: playerNum, word: word, score: score };
     
-    console.log(`📝 Word played: "${word}" for ${score} points by Player ${playerNum}`);
+    console.log(`✅ Word "${word}" played successfully for ${score} points!\n`);
     
     io.to(gameId).emit('gameStateUpdate', gameState);
     socket.emit('playSuccess', { success: true });
@@ -259,9 +354,11 @@ io.on('connection', (socket) => {
     }
     
     if (game.bag.length < tiles.length) {
-      socket.emit('exchangeFailed', { error: 'Not enough tiles' });
+      socket.emit('exchangeFailed', { error: 'Not enough tiles in bag' });
       return;
     }
+    
+    console.log(`🔄 Exchanging tiles for Player ${playerNum}: ${tiles.join(', ')}`);
     
     const currentRack = [...game.players[playerNum].rack];
     for (let tile of tiles) {
@@ -303,6 +400,8 @@ io.on('connection', (socket) => {
       return;
     }
     
+    console.log(`⏭️ Player ${playerNum} passed the turn`);
+    
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
     const gameState = getGameState(game);
@@ -335,4 +434,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`\n🚀 Server running on port ${PORT}`);
   console.log(`🌐 Open http://localhost:${PORT} to play\n`);
+  console.log(`📚 Dictionary loaded with ${validWords.size} words`);
 });
+EOF

@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplayer Scrabble</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        /* Join Screen */
+        .join-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .join-card {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+
+        .join-card h1 {
+            margin-bottom: 20px;
+            color: #2c1810;
+        }
+
+        .join-card input {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+
+        .join-card button {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0;
+            background: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .join-card button:hover {
+            background: #45a049;
+        }
+
+        .game-id-display {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 18px;
+        }
+
+        /* Game Container (hidden initially) */
+        .game-container {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            max-width: 750px;
+            width: 100%;
+            margin: 0 auto;
+        }
+
+        :root {
+            --board-size: min(85vw, 85vh, 600px);
+            --cell-size: calc(var(--board-size) / 15);
+            --tile-size: calc(var(--cell-size) * 0.9);
+        }
+
+        .game-header {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            max-width: var(--board-size);
+            gap: 10px;
+        }
+
+        .player-info {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 12px 20px;
+            color: white;
+            text-align: center;
+            flex: 1;
+            border: 3px solid transparent;
+        }
+
+        .player-info.active {
+            border-color: #ffd700;
+            box-shadow: 0 0 25px rgba(255, 215, 0, 0.5);
+            background: rgba(255, 215, 0, 0.12);
+        }
+
+        .player-name { font-weight: bold; font-size: 1rem; }
+        .player-score { font-size: 1.8rem; font-weight: bold; color: #ffd700; }
+        .player-indicator { font-size: 0.7rem; opacity: 0.8; }
+
+        .board-wrapper {
+            background: #5d4037;
+            border-radius: 12px;
+            padding: 8px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+
+        .board {
+            display: grid;
+            grid-template-columns: repeat(15, var(--cell-size));
+            gap: 1px;
+            background: #3e2723;
+        }
+
+        .cell {
+            background: #f5deb3;
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            font-size: calc(var(--cell-size) * 0.32);
+            font-weight: bold;
+        }
+
+        .cell .tile {
+            position: absolute;
+            inset: 2px;
+            background: linear-gradient(180deg, #fffef5 0%, #e8dcc8 100%);
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: calc(var(--cell-size) * 0.48);
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .rack-container {
+            background: #4e342e;
+            border-radius: 16px;
+            padding: 12px;
+            width: 100%;
+            max-width: var(--board-size);
+        }
+
+        .rack-tiles {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .rack-tile {
+            width: calc(var(--tile-size) * 0.85);
+            height: calc(var(--tile-size) * 0.85);
+            background: linear-gradient(180deg, #fffef5 0%, #e0d5c0 100%);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: calc(var(--tile-size) * 0.5);
+            font-weight: bold;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.15s ease;
+        }
+
+        .rack-tile.selected {
+            transform: translateY(-10px);
+            border: 3px solid #ffd700;
+            background: linear-gradient(180deg, #fffde0 0%, #ffecb3 100%);
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            text-transform: uppercase;
+        }
+
+        .btn-play { background: #4caf50; color: white; }
+        .btn-recall { background: #ff9800; color: white; }
+        .btn-exchange { background: #9c27b0; color: white; }
+        .btn-pass { background: #607d8b; color: white; }
+
+        .message-area {
+            color: white;
+            text-align: center;
+            padding: 8px;
+            border-radius: 20px;
+            background: rgba(0,0,0,0.5);
+        }
+
+        .waiting-message {
+            text-align: center;
+            color: white;
+            padding: 20px;
+            font-size: 18px;
+        }
+
+        @media (max-width: 650px) {
+            .rack-tile { font-size: calc(var(--tile-size) * 0.4); }
+            .btn { padding: 6px 12px; font-size: 12px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Join Screen -->
+    <div class="join-screen" id="joinScreen">
+        <div class="join-card">
+            <h1>🎲 Scrabble Multiplayer</h1>
+            <button onclick="showCreateGame()">Create New Game</button>
+            <button onclick="showJoinGame()">Join Existing Game</button>
+            
+            <div id="createGameDiv" style="display:none; margin-top:20px;">
+                <input type="text" id="playerNameCreate" placeholder="Your Name" maxlength="20">
+                <button onclick="createGame()">Create Game</button>
+                <button onclick="hideCreate()">Cancel</button>
+            </div>
+            
+            <div id="joinGameDiv" style="display:none; margin-top:20px;">
+                <input type="text" id="gameIdJoin" placeholder="Game Code" maxlength="10">
+                <input type="text" id="playerNameJoin" placeholder="Your Name" maxlength="20">
+                <button onclick="joinGame()">Join Game</button>
+                <button onclick="hideJoin()">Cancel</button>
+            </div>
+            
+            <div id="waitingDiv" style="display:none; margin-top:20px;">
+                <div class="game-id-display" id="gameCodeDisplay"></div>
+                <div class="waiting-message">Waiting for second player to join...</div>
+                <button onclick="copyGameCode()">Copy Game Code</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Container -->
+    <div class="game-container" id="gameContainer">
+        <div class="game-header">
+            <div class="player-info" id="player1Info">
+                <div class="player-name" id="player1Name">Player 1</div>
+                <div class="player-score" id="player1Score">0</div>
+                <div class="player-indicator" id="player1Indicator"></div>
+            </div>
+            <div class="player-info" id="player2Info">
+                <div class="player-name" id="player2Name">Player 2</div>
+                <div class="player-score" id="player2Score">0</div>
+                <div class="player-indicator" id="player2Indicator"></div>
+            </div>
+        </div>
+
+        <div class="board-wrapper">
+            <div class="board" id="board"></div>
+        </div>
+
+        <div class="message-area" id="message">Waiting for game to start...</div>
+
+        <div class="rack-container">
+            <div class="rack-tiles" id="rackTiles"></div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-play" id="btnPlay">▶ Play Word</button>
+            <button class="btn btn-recall" id="btnRecall">↩ Recall</button>
+            <button class="btn btn-exchange" id="btnExchange">🔄 Exchange</button>
+            <button class="btn btn-pass" id="btnPass">⏭ Pass</button>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let currentGameId = null;
+        let myPlayerNum = null;
+        let currentBoard = Array(15).fill().map(() => Array(15).fill(null));
+        let myRack = [];
+        let selectedTileIndex = null;
+        let placedTiles = new Map(); // position -> { letter, rackIndex }
+        let currentTurn = 1;
+        
+        // Premium squares data
+        const premiumLayout = {};
+        const setupPremium = () => {
+            const tw = [[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]];
+            const dw = [[1,1],[1,13],[2,2],[2,12],[3,3],[3,11],[4,4],[4,10],[10,4],[10,10],[11,3],[11,11],[12,2],[12,12],[13,1],[13,13]];
+            const tl = [[1,5],[1,9],[5,1],[5,5],[5,9],[5,13],[9,1],[9,5],[9,9],[9,13],[13,5],[13,9]];
+            const dl = [[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12],[7,3],[7,11],[8,2],[8,6],[8,8],[8,12],[11,0],[11,7],[11,14],[12,6],[12,8],[14,3],[14,11]];
+            tw.forEach(([r,c]) => premiumLayout[`${r},${c}`] = 'tw');
+            dw.forEach(([r,c]) => premiumLayout[`${r},${c}`] = 'dw');
+            tl.forEach(([r,c]) => premiumLayout[`${r},${c}`] = 'tl');
+            dl.forEach(([r,c]) => premiumLayout[`${r},${c}`] = 'dl');
+        };
+        setupPremium();
+        
+        function showCreateGame() {
+            document.getElementById('createGameDiv').style.display = 'block';
+            document.getElementById('joinGameDiv').style.display = 'none';
+        }
+        
+        function showJoinGame() {
+            document.getElementById('createGameDiv').style.display = 'none';
+            document.getElementById('joinGameDiv').style.display = 'block';
+        }
+        
+        function hideCreate() {
+            document.getElementById('createGameDiv').style.display = 'none';
+        }
+        
+        function hideJoin() {
+            document.getElementById('joinGameDiv').style.display = 'none';
+        }
+        
+        function copyGameCode() {
+            const code = document.getElementById('gameCodeDisplay').innerText;
+            navigator.clipboard.writeText(code);
+            alert('Game code copied!');
+        }
+        
+        function createGame() {
+            const playerName = document.getElementById('playerNameCreate').value.trim();
+            if (!playerName) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            socket = io();
+            
+            socket.emit('createGame', { playerName }, (response) => {
+                if (response.success) {
+                    currentGameId = response.gameId;
+                    myPlayerNum = response.playerNum;
+                    
+                    document.getElementById('gameCodeDisplay').innerText = currentGameId;
+                    document.getElementById('createGameDiv').style.display = 'none';
+                    document.getElementById('waitingDiv').style.display = 'block';
+                    
+                    setupSocketListeners();
+                } else {
+                    alert('Failed to create game');
+                }
+            });
+        }
+        
+        function joinGame() {
+            const gameId = document.getElementById('gameIdJoin').value.trim().toUpperCase();
+            const playerName = document.getElementById('playerNameJoin').value.trim();
+            
+            if (!gameId || !playerName) {
+                alert('Please enter game code and your name');
+                return;
+            }
+            
+            socket = io();
+            
+            socket.emit('joinGame', { gameId, playerName }, (response) => {
+                if (response.success) {
+                    currentGameId = gameId;
+                    myPlayerNum = response.playerNum;
+                    startGame();
+                } else {
+                    alert('Failed to join game: ' + (response.error || 'Unknown error'));
+                }
+            });
+        }
+        
+        function startGame() {
+            document.getElementById('joinScreen').style.display = 'none';
+            document.getElementById('gameContainer').style.display = 'flex';
+            setupSocketListeners();
+        }
+        
+        function setupSocketListeners() {
+            socket.on('gameStateUpdate', (data) => {
+                updateGameState(data);
+            });
+            
+            socket.on('playerDisconnected', (data) => {
+                alert(`Player ${data.playerNum} disconnected! The game will end.`);
+                location.reload();
+            });
+        }
+        
+        function updateGameState(data) {
+            currentBoard = data.board;
+            currentTurn = data.currentTurn;
+            
+            // Update player info
+            document.getElementById('player1Name').innerText = data.players[1].name;
+            document.getElementById('player1Score').innerText = data.players[1].score;
+            document.getElementById('player2Name').innerText = data.players[2].name || 'Waiting...';
+            document.getElementById('player2Score').innerText = data.players[2].score || 0;
+            
+            // Update active player highlight
+            const isMyTurn = (currentTurn === myPlayerNum);
+            document.getElementById('player1Info').classList.toggle('active', currentTurn === 1);
+            document.getElementById('player2Info').classList.toggle('active', currentTurn === 2);
+            
+            document.getElementById('player1Indicator').innerText = currentTurn === 1 ? '● Your Turn' : '';
+            document.getElementById('player2Indicator').innerText = currentTurn === 2 ? '● Your Turn' : '';
+            
+            // Update my rack
+            if (myPlayerNum === 1) {
+                myRack = data.players[1].rack || [];
+            } else {
+                myRack = data.players[2].rack || [];
+            }
+            
+            // Update message
+            const messageDiv = document.getElementById('message');
+            if (!isMyTurn && currentTurn !== null) {
+                messageDiv.innerText = `Waiting for Player ${currentTurn}'s turn...`;
+                messageDiv.style.background = 'rgba(0,0,0,0.5)';
+            } else if (isMyTurn) {
+                messageDiv.innerText = 'Your turn! Place tiles on the board and click Play Word';
+                messageDiv.style.background = 'rgba(76, 175, 80, 0.3)';
+            }
+            
+            // Update last play message
+            if (data.lastPlay) {
+                setTimeout(() => {
+                    document.getElementById('message').innerText = `Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
+                    setTimeout(() => {
+                        if (isMyTurn) {
+                            document.getElementById('message').innerText = 'Your turn! Place tiles on the board and click Play Word';
+                        }
+                    }, 3000);
+                }, 100);
+            }
+            
+            renderBoard();
+            renderRack();
+        }
+        
+        function renderBoard() {
+            const boardDiv = document.getElementById('board');
+            boardDiv.innerHTML = '';
+            
+            for (let row = 0; row < 15; row++) {
+                for (let col = 0; col < 15; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    
+                    // Add premium square styling
+                    const premium = premiumLayout[`${row},${col}`];
+                    if (premium) cell.classList.add(premium);
+                    if (row === 7 && col === 7 && !premium) cell.classList.add('center-star');
+                    
+                    // Check if tile is placed
+                    const tile = currentBoard[row][col];
+                    const placedTile = placedTiles.get(`${row},${col}`);
+                    
+                    if (placedTile) {
+                        const tileDiv = document.createElement('div');
+                        tileDiv.className = 'tile';
+                        tileDiv.style.background = 'linear-gradient(180deg, #e8f5e9 0%, #c8e6c9 100%)';
+                        tileDiv.style.border = '2px solid #4caf50';
+                        tileDiv.innerText = placedTile.letter;
+                        cell.appendChild(tileDiv);
+                        cell.style.cursor = 'pointer';
+                        cell.onclick = () => removePlacedTile(row, col);
+                    } else if (tile) {
+                        const tileDiv = document.createElement('div');
+                        tileDiv.className = 'tile';
+                        tileDiv.innerText = tile.letter;
+                        cell.appendChild(tileDiv);
+                    } else {
+                        if (premium === 'tw') cell.innerText = 'TW';
+                        else if (premium === 'dw') cell.innerText = 'DW';
+                        else if (premium === 'tl') cell.innerText = 'TL';
+                        else if (premium === 'dl') cell.innerText = 'DL';
+                        else if (row === 7 && col === 7) cell.innerText = '★';
+                        
+                        if (currentTurn === myPlayerNum && !tile) {
+                            cell.style.cursor = 'pointer';
+                            cell.onclick = () => selectBoardCell(row, col);
+                        }
+                    }
+                    
+                    boardDiv.appendChild(cell);
+                }
+            }
+        }
+        
+        function selectBoardCell(row, col) {
+            if (currentTurn !== myPlayerNum) {
+                alert('Not your turn!');
+                return;
+            }
+            
+            if (currentBoard[row][col] !== null) {
+                alert('Cell already occupied!');
+                return;
+            }
+            
+            if (placedTiles.has(`${row},${col}`)) {
+                removePlacedTile(row, col);
+                return;
+            }
+            
+            if (selectedTileIndex === null) {
+                alert('Select a tile from your rack first!');
+                return;
+            }
+            
+            const selectedTile = myRack[selectedTileIndex];
+            if (!selectedTile) return;
+            
+            placedTiles.set(`${row},${col}`, { 
+                letter: selectedTile, 
+                rackIndex: selectedTileIndex 
+            });
+            
+            // Remove from rack temporarily
+            myRack.splice(selectedTileIndex, 1);
+            selectedTileIndex = null;
+            
+            renderBoard();
+            renderRack();
+        }
+        
+        function removePlacedTile(row, col) {
+            const placed = placedTiles.get(`${row},${col}`);
+            if (placed) {
+                myRack.splice(placed.rackIndex, 0, placed.letter);
+                placedTiles.delete(`${row},${col}`);
+                renderBoard();
+                renderRack();
+            }
+        }
+        
+        function renderRack() {
+            const rackDiv = document.getElementById('rackTiles');
+            rackDiv.innerHTML = '';
+            
+            myRack.forEach((tile, index) => {
+                const tileDiv = document.createElement('div');
+                tileDiv.className = 'rack-tile';
+                if (selectedTileIndex === index) tileDiv.classList.add('selected');
+                tileDiv.innerText = tile === '?' ? '?' : tile;
+                
+                const score = getLetterScore(tile);
+                const scoreSpan = document.createElement('span');
+                scoreSpan.className = 'tile-score-sub';
+                scoreSpan.innerText = score;
+                tileDiv.appendChild(scoreSpan);
+                
+                tileDiv.onclick = () => {
+                    if (currentTurn !== myPlayerNum) {
+                        alert('Not your turn!');
+                        return;
+                    }
+                    selectedTileIndex = index;
+                    renderRack();
+                };
+                
+                rackDiv.appendChild(tileDiv);
+            });
+        }
+        
+        function getLetterScore(letter) {
+            const scores = { 'A':1,'B':3,'C':3,'D':2,'E':1,'F':4,'G':2,'H':4,'I':1,'J':8,
+                'K':5,'L':1,'M':3,'N':1,'O':1,'P':3,'Q':10,'R':1,'S':1,'T':1,'U':1,'V':4,
+                'W':4,'X':8,'Y':4,'Z':10,'?':0 };
+            return scores[letter] || 1;
+        }
+        
+        function calculateScore() {
+            let total = 0;
+            for (const [pos, data] of placedTiles) {
+                total += getLetterScore(data.letter);
+            }
+            return total;
+        }
+        
+        function playWord() {
+            if (placedTiles.size === 0) {
+                alert('No tiles placed on the board!');
+                return;
+            }
+            
+            const word = Array.from(placedTiles.values()).map(t => t.letter).join('');
+            const score = calculateScore();
+            
+            socket.emit('playWord', {
+                gameId: currentGameId,
+                word: word,
+                placements: Array.from(placedTiles.entries()),
+                score: score
+            }, (response) => {
+                if (response.success) {
+                    placedTiles.clear();
+                    selectedTileIndex = null;
+                    renderBoard();
+                    renderRack();
+                } else {
+                    alert('Invalid word: ' + (response.error || 'Word not in dictionary'));
+                }
+            });
+        }
+        
+        function recallTiles() {
+            for (const [pos, data] of placedTiles) {
+                myRack.splice(data.rackIndex, 0, data.letter);
+            }
+            placedTiles.clear();
+            selectedTileIndex = null;
+            renderBoard();
+            renderRack();
+        }
+        
+        function exchangeTiles() {
+            if (selectedTileIndex === null) {
+                alert('Select a tile from your rack to exchange!');
+                return;
+            }
+            
+            const tileToExchange = myRack[selectedTileIndex];
+            socket.emit('exchangeTiles', {
+                gameId: currentGameId,
+                tiles: [tileToExchange]
+            }, (response) => {
+                if (response.success) {
+                    selectedTileIndex = null;
+                } else {
+                    alert('Failed to exchange: ' + (response.error || 'Unknown error'));
+                }
+            });
+        }
+        
+        function passTurn() {
+            socket.emit('passTurn', { gameId: currentGameId }, (response) => {
+                if (response.success) {
+                    recallTiles();
+                }
+            });
+        }
+        
+        document.getElementById('btnPlay').onclick = playWord;
+        document.getElementById('btnRecall').onclick = recallTiles;
+        document.getElementById('btnExchange').onclick = exchangeTiles;
+        document.getElementById('btnPass').onclick = passTurn;
+    </script>
+</body>
+</html>

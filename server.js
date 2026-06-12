@@ -16,7 +16,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Game storage
 const games = new Map();
 
 const BOARD_SIZE = 15;
@@ -88,21 +87,18 @@ function getGameState(game) {
       }
     },
     currentTurn: game.currentTurn,
-    status: game.status,
-    bagCount: game.bag.length
+    status: game.status
   };
 }
 
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('🔌 User connected:', socket.id);
   
-  // Create new game
   socket.on('createGame', ({ playerName }) => {
     const gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
     const bag = createLetterBag();
     const board = createEmptyBoard();
     
-    // Draw initial racks
     const { drawn: rack1, bag: newBag1 } = drawLetters([...bag], RACK_SIZE);
     const { drawn: rack2, bag: newBag2 } = drawLetters(newBag1, RACK_SIZE);
     
@@ -121,8 +117,8 @@ io.on('connection', (socket) => {
     games.set(gameId, game);
     socket.join(gameId);
     
-    console.log(`Game created: ${gameId} by ${playerName}`);
-    console.log(`Player 1 rack: ${rack1.join(',')}`);
+    console.log(`✅ Game created: ${gameId} by ${playerName}`);
+    console.log(`   Player 1 rack: ${rack1.join(', ')}`);
     
     socket.emit('gameCreated', {
       success: true,
@@ -132,24 +128,22 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Join existing game
   socket.on('joinGame', ({ gameId, playerName }) => {
-    console.log(`Join attempt: ${playerName} trying to join ${gameId}`);
+    console.log(`🎮 Join attempt: ${playerName} -> ${gameId}`);
     const game = games.get(gameId);
     
     if (!game) {
-      console.log(`Game ${gameId} not found`);
+      console.log(`❌ Game ${gameId} not found`);
       socket.emit('joinFailed', { error: 'Game not found' });
       return;
     }
     
     if (game.players[2] !== null) {
-      console.log(`Game ${gameId} is full`);
+      console.log(`❌ Game ${gameId} is full`);
       socket.emit('joinFailed', { error: 'Game is full' });
       return;
     }
     
-    // Draw rack for player 2
     const { drawn: rack2, bag: newBag } = drawLetters([...game.bag], RACK_SIZE);
     
     game.players[2] = {
@@ -163,34 +157,34 @@ io.on('connection', (socket) => {
     
     socket.join(gameId);
     
-    console.log(`${playerName} joined game ${gameId}`);
-    console.log(`Player 2 rack: ${rack2.join(',')}`);
+    console.log(`✅ ${playerName} joined game ${gameId}`);
+    console.log(`   Player 2 rack: ${rack2.join(', ')}`);
     
     const gameState = getGameState(game);
     
-    // Send to player 2 (joiner)
+    // Send to player 2
     socket.emit('gameJoined', {
       success: true,
       playerNum: 2,
       gameState: gameState
     });
     
-    // Send game state to player 2
+    // Send to player 2 (immediate state)
     socket.emit('gameStateUpdate', gameState);
     
-    // Send updated state to player 1 (creator)
+    // Send to player 1 - IMPORTANT FIX
     const player1Socket = game.players[1].socketId;
-    console.log(`Sending game update to player 1 (${player1Socket})`);
+    console.log(`📤 Sending game update to Player 1 (${player1Socket})`);
     io.to(player1Socket).emit('gameStateUpdate', gameState);
-    
-    // Also broadcast to the room to be safe
-    io.to(gameId).emit('playerJoined', { 
-      message: `${playerName} has joined the game!`,
+    io.to(player1Socket).emit('playerJoined', { 
+      message: `${playerName} has joined!`,
       gameState: gameState 
     });
+    
+    // Broadcast to room
+    io.to(gameId).emit('gameReady', { gameState: gameState });
   });
   
-  // Play word
   socket.on('playWord', ({ gameId, word, placements, score }) => {
     const game = games.get(gameId);
     if (!game) {
@@ -212,17 +206,16 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Apply placements to board
+    // Apply placements
     for (const [pos, letter] of placements) {
       const [row, col] = pos.split(',').map(Number);
       game.board[row][col] = { letter: letter, playedBy: playerNum };
     }
     
-    // Update score
     game.players[playerNum].score += score;
     if (word.length === 7) game.players[playerNum].score += BINGO_BONUS;
     
-    // Remove played letters from rack
+    // Update rack
     const wordLetters = word.split('');
     const currentRack = [...game.players[playerNum].rack];
     for (let letter of wordLetters) {
@@ -230,25 +223,20 @@ io.on('connection', (socket) => {
       if (index !== -1) currentRack.splice(index, 1);
     }
     
-    // Draw new letters
     const { drawn, bag } = drawLetters([...game.bag], wordLetters.length);
     game.players[playerNum].rack = [...currentRack, ...drawn];
     game.bag = bag;
-    
-    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    // Broadcast update to both players
     const gameState = getGameState(game);
     gameState.lastPlay = { player: playerNum, word: word, score: score };
     
-    console.log(`Word played: ${word} for ${score} points by Player ${playerNum}`);
+    console.log(`📝 Word played: "${word}" for ${score} points by Player ${playerNum}`);
     
     io.to(gameId).emit('gameStateUpdate', gameState);
     socket.emit('playSuccess', { success: true });
   });
   
-  // Exchange tiles
   socket.on('exchangeTiles', ({ gameId, tiles }) => {
     const game = games.get(gameId);
     if (!game) {
@@ -271,36 +259,29 @@ io.on('connection', (socket) => {
     }
     
     if (game.bag.length < tiles.length) {
-      socket.emit('exchangeFailed', { error: 'Not enough tiles in bag' });
+      socket.emit('exchangeFailed', { error: 'Not enough tiles' });
       return;
     }
     
-    // Remove tiles from rack
     const currentRack = [...game.players[playerNum].rack];
     for (let tile of tiles) {
       const index = currentRack.findIndex(t => t === tile);
       if (index !== -1) currentRack.splice(index, 1);
     }
     
-    // Add exchanged tiles back to bag and shuffle
     game.bag.push(...tiles);
     game.bag = shuffleArray(game.bag);
     
-    // Draw new tiles
     const { drawn, bag } = drawLetters([...game.bag], tiles.length);
     game.players[playerNum].rack = [...currentRack, ...drawn];
     game.bag = bag;
-    
-    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    // Broadcast update
     const gameState = getGameState(game);
     io.to(gameId).emit('gameStateUpdate', gameState);
     socket.emit('exchangeSuccess', { success: true });
   });
   
-  // Pass turn
   socket.on('passTurn', ({ gameId }) => {
     const game = games.get(gameId);
     if (!game) {
@@ -322,32 +303,29 @@ io.on('connection', (socket) => {
       return;
     }
     
-    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    // Broadcast update
     const gameState = getGameState(game);
     io.to(gameId).emit('gameStateUpdate', gameState);
     socket.emit('passSuccess', { success: true });
   });
   
   socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+    console.log('🔌 User disconnected:', socket.id);
     
-    // Find and clean up games
     for (const [gameId, game] of games.entries()) {
       if (game.players[1] && game.players[1].socketId === socket.id) {
         if (game.players[2]) {
           io.to(game.players[2].socketId).emit('playerDisconnected', { playerNum: 1 });
         }
         games.delete(gameId);
-        console.log(`Game ${gameId} deleted - player 1 disconnected`);
+        console.log(`🗑️ Game ${gameId} deleted - Player 1 left`);
       } else if (game.players[2] && game.players[2].socketId === socket.id) {
         if (game.players[1]) {
           io.to(game.players[1].socketId).emit('playerDisconnected', { playerNum: 2 });
         }
         games.delete(gameId);
-        console.log(`Game ${gameId} deleted - player 2 disconnected`);
+        console.log(`🗑️ Game ${gameId} deleted - Player 2 left`);
       }
     }
   });
@@ -355,6 +333,6 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-  console.log(`🌐 Open http://localhost:${PORT} to play`);
+  console.log(`\n🚀 Server running on port ${PORT}`);
+  console.log(`🌐 Open http://localhost:${PORT} to play\n`);
 });

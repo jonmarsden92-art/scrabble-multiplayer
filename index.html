@@ -59,11 +59,7 @@
             transition: all 0.2s;
             border-radius: 3px;
         }
-        .cell:hover {
-            transform: scale(1.05);
-            z-index: 1;
-            box-shadow: 0 0 10px rgba(255,215,0,0.5);
-        }
+        .cell:hover { transform: scale(1.05); }
         .rack {
             display: flex;
             gap: 10px;
@@ -73,6 +69,7 @@
             background: #4e342e;
             padding: 20px;
             border-radius: 10px;
+            min-height: 100px;
         }
         .rack-tile {
             width: 60px;
@@ -90,13 +87,10 @@
             transition: all 0.2s;
             box-shadow: 0 4px 8px rgba(0,0,0,0.3);
         }
-        .rack-tile:hover {
-            transform: translateY(-5px);
-        }
+        .rack-tile:hover { transform: translateY(-5px); }
         .rack-tile.selected {
             border: 3px solid gold;
             transform: translateY(-10px);
-            box-shadow: 0 8px 16px rgba(255,215,0,0.4);
         }
         .player-info {
             display: inline-block;
@@ -109,14 +103,13 @@
         .active {
             border: 2px solid gold;
             background: rgba(255,215,0,0.2);
-            box-shadow: 0 0 20px rgba(255,215,0,0.3);
         }
         #message {
             margin: 10px;
             padding: 15px;
             background: rgba(0,0,0,0.5);
             border-radius: 10px;
-            font-size: 18px;
+            font-size: 16px;
             font-weight: bold;
         }
         .game-code {
@@ -141,9 +134,10 @@
             color: #d4a574;
             font-size: 20px;
         }
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .loading {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
         }
     </style>
 </head>
@@ -151,7 +145,6 @@
     <div class="container">
         <h1>🎲 Scrabble Multiplayer</h1>
         
-        <!-- Join Screen -->
         <div id="joinScreen" class="join-screen">
             <h2>Welcome to Scrabble!</h2>
             <button id="createBtn">🎮 Create New Game</button>
@@ -174,11 +167,10 @@
                 <h3>Share this code with your friend:</h3>
                 <div class="game-code" id="gameCodeDisplay"></div>
                 <button id="copyCode">📋 Copy Code</button>
-                <div class="status">⏳ Waiting for Player 2 to join...</div>
+                <div class="loading" id="waitingStatus">⏳ Waiting for Player 2 to join...</div>
             </div>
         </div>
         
-        <!-- Game Container -->
         <div id="gameContainer" class="game-container">
             <div>
                 <div id="p1Info" class="player-info">
@@ -205,19 +197,13 @@
     </div>
 
     <script>
-        // Premium squares configuration
+        // Premium squares
         const premiumSquares = {};
-        
-        // Triple Word
         [[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'tw');
-        // Double Word
         [[1,1],[1,13],[2,2],[2,12],[3,3],[3,11],[4,4],[4,10],[10,4],[10,10],[11,3],[11,11],[12,2],[12,12],[13,1],[13,13]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'dw');
-        // Triple Letter
         [[1,5],[1,9],[5,1],[5,5],[5,9],[5,13],[9,1],[9,5],[9,9],[9,13],[13,5],[13,9]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'tl');
-        // Double Letter
         [[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12],[7,3],[7,11],[8,2],[8,6],[8,8],[8,12],[11,0],[11,7],[11,14],[12,6],[12,8],[14,3],[14,11]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'dl');
         
-        // Global variables
         let socket = null;
         let gameId = null;
         let myPlayerNumber = null;
@@ -227,32 +213,27 @@
         let placedTiles = new Map();
         let boardData = Array(15).fill().map(() => Array(15).fill(null));
         
-        // DOM elements
         const joinScreen = document.getElementById('joinScreen');
         const gameContainer = document.getElementById('gameContainer');
-        const createPanel = document.getElementById('createPanel');
-        const joinPanel = document.getElementById('joinPanel');
-        const waitingPanel = document.getElementById('waitingPanel');
         
-        // Button handlers
         document.getElementById('createBtn').onclick = () => {
-            createPanel.style.display = 'block';
-            joinPanel.style.display = 'none';
-            waitingPanel.style.display = 'none';
+            document.getElementById('createPanel').style.display = 'block';
+            document.getElementById('joinPanel').style.display = 'none';
+            document.getElementById('waitingPanel').style.display = 'none';
         };
         
         document.getElementById('joinBtn').onclick = () => {
-            createPanel.style.display = 'none';
-            joinPanel.style.display = 'block';
-            waitingPanel.style.display = 'none';
+            document.getElementById('createPanel').style.display = 'none';
+            document.getElementById('joinPanel').style.display = 'block';
+            document.getElementById('waitingPanel').style.display = 'none';
         };
         
         document.getElementById('cancelCreate').onclick = () => {
-            createPanel.style.display = 'none';
+            document.getElementById('createPanel').style.display = 'none';
         };
         
         document.getElementById('cancelJoin').onclick = () => {
-            joinPanel.style.display = 'none';
+            document.getElementById('joinPanel').style.display = 'none';
         };
         
         document.getElementById('confirmCreate').onclick = () => {
@@ -281,56 +262,54 @@
         };
         
         function createGame(playerName) {
-            console.log('Creating game for:', playerName);
-            
             socket = io();
             
             socket.on('connect', () => {
-                console.log('Socket connected! ID:', socket.id);
-                socket.emit('createGame', { playerName: playerName }, (response) => {
-                    console.log('Create game response:', response);
-                    if (response && response.success) {
-                        gameId = response.gameId;
-                        myPlayerNumber = response.playerNum;
-                        document.getElementById('gameCodeDisplay').innerText = gameId;
-                        createPanel.style.display = 'none';
-                        waitingPanel.style.display = 'block';
-                        setupGameListeners();
-                    } else {
-                        alert('Failed to create game: ' + (response?.error || 'Unknown error'));
-                    }
-                });
+                console.log('Connected to server');
+                socket.emit('createGame', { playerName: playerName });
+            });
+            
+            socket.on('gameCreated', (data) => {
+                console.log('Game created:', data);
+                gameId = data.gameId;
+                myPlayerNumber = data.playerNum;
+                boardData = data.gameState.board;
+                
+                document.getElementById('gameCodeDisplay').innerText = gameId;
+                document.getElementById('createPanel').style.display = 'none';
+                document.getElementById('waitingPanel').style.display = 'block';
+                
+                setupGameListeners();
             });
             
             socket.on('connect_error', (error) => {
                 console.error('Connection error:', error);
-                alert('Failed to connect to server. Please refresh the page.');
+                alert('Failed to connect to server');
             });
         }
         
         function joinGame(code, playerName) {
-            console.log('Joining game:', code, playerName);
-            
             socket = io();
             
             socket.on('connect', () => {
-                console.log('Socket connected! ID:', socket.id);
-                socket.emit('joinGame', { gameId: code, playerName: playerName }, (response) => {
-                    console.log('Join game response:', response);
-                    if (response && response.success) {
-                        gameId = code;
-                        myPlayerNumber = response.playerNum;
-                        startGame();
-                        setupGameListeners();
-                    } else {
-                        alert('Failed to join game: ' + (response?.error || 'Unknown error'));
-                    }
-                });
+                console.log('Connected to server');
+                socket.emit('joinGame', { gameId: code, playerName: playerName });
+            });
+            
+            socket.on('gameJoined', (data) => {
+                console.log('Game joined:', data);
+                myPlayerNumber = data.playerNum;
+                startGame();
+                setupGameListeners();
+            });
+            
+            socket.on('joinFailed', (data) => {
+                alert('Failed to join: ' + data.error);
             });
             
             socket.on('connect_error', (error) => {
                 console.error('Connection error:', error);
-                alert('Failed to connect to server. Please refresh the page.');
+                alert('Failed to connect to server');
             });
         }
         
@@ -341,45 +320,41 @@
         
         function setupGameListeners() {
             socket.on('gameStateUpdate', (data) => {
-                console.log('Game state update received:', data);
+                console.log('Game state update:', data);
                 boardData = data.board;
                 currentTurn = data.currentTurn;
                 
-                // Update player info
                 document.getElementById('p1Name').innerText = data.players[1].name;
                 document.getElementById('p1Score').innerText = data.players[1].score;
-                document.getElementById('p2Name').innerText = data.players[2].name || 'Waiting...';
-                document.getElementById('p2Score').innerText = data.players[2].score || 0;
+                document.getElementById('p2Name').innerText = data.players[2].name;
+                document.getElementById('p2Score').innerText = data.players[2].score;
                 
-                // Highlight active player
                 document.getElementById('p1Info').classList.toggle('active', currentTurn === 1);
                 document.getElementById('p2Info').classList.toggle('active', currentTurn === 2);
                 
-                // Update my rack
                 if (myPlayerNumber === 1) {
                     myRack = data.players[1].rack || [];
                 } else {
                     myRack = data.players[2].rack || [];
                 }
                 
-                // Update message
                 const isMyTurn = (currentTurn === myPlayerNumber);
                 const msgDiv = document.getElementById('message');
                 if (isMyTurn) {
-                    msgDiv.innerHTML = '🎯 YOUR TURN! Click on a tile in your rack, then click on the board to place it.';
+                    msgDiv.innerHTML = '🎯 YOUR TURN! Click a tile, then click on the board';
                     msgDiv.style.background = 'rgba(76, 175, 80, 0.3)';
                 } else {
-                    msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name || `Player ${currentTurn}`}'s turn...`;
+                    msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name}'s turn...`;
                     msgDiv.style.background = 'rgba(0,0,0,0.5)';
                 }
                 
                 if (data.lastPlay) {
-                    msgDiv.innerHTML = `🎉 ${data.players[data.lastPlay.player]?.name || `Player ${data.lastPlay.player}`} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
+                    msgDiv.innerHTML = `🎉 ${data.players[data.lastPlay.player]?.name} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
                     setTimeout(() => {
                         if (isMyTurn) {
-                            msgDiv.innerHTML = '🎯 YOUR TURN! Click on a tile in your rack, then click on the board to place it.';
+                            msgDiv.innerHTML = '🎯 YOUR TURN! Click a tile, then click on the board';
                         } else {
-                            msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name || `Player ${currentTurn}`}'s turn...`;
+                            msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name}'s turn...`;
                         }
                     }, 3000);
                 }
@@ -389,7 +364,7 @@
             });
             
             socket.on('playerDisconnected', (data) => {
-                alert(`Player ${data.playerNum} disconnected! Game will end.`);
+                alert(`Player ${data.playerNum} disconnected!`);
                 location.reload();
             });
         }
@@ -403,14 +378,12 @@
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     
-                    // Add premium square styling
                     const premium = premiumSquares[`${row},${col}`];
                     if (premium === 'tw') cell.classList.add('premium-tw');
                     else if (premium === 'dw') cell.classList.add('premium-dw');
                     else if (premium === 'tl') cell.classList.add('premium-tl');
                     else if (premium === 'dl') cell.classList.add('premium-dl');
                     
-                    // Show premium text on empty cells
                     if (!boardData[row][col] && !placedTiles.get(`${row},${col}`)) {
                         if (premium === 'tw') cell.innerHTML = 'TW';
                         else if (premium === 'dw') cell.innerHTML = 'DW';
@@ -426,20 +399,13 @@
                         cell.innerHTML = myPlacedTile.letter;
                         cell.style.background = '#c8e6c9';
                         cell.style.border = '2px solid #4caf50';
-                        cell.style.fontSize = '20px';
-                        cell.style.fontWeight = 'bold';
                         cell.onclick = () => removeTile(row, col);
                     } else if (permanentTile) {
                         cell.innerHTML = permanentTile.letter;
                         cell.style.background = '#fffef5';
                         cell.style.fontSize = '20px';
-                        cell.style.fontWeight = 'bold';
-                        cell.onclick = null;
-                    } else {
-                        if (currentTurn === myPlayerNumber) {
-                            cell.onclick = () => placeTile(row, col);
-                            cell.style.cursor = 'pointer';
-                        }
+                    } else if (currentTurn === myPlayerNumber) {
+                        cell.onclick = () => placeTile(row, col);
                     }
                     
                     boardDiv.appendChild(cell);
@@ -452,25 +418,19 @@
                 alert('Not your turn!');
                 return;
             }
-            
             if (boardData[row][col] !== null) {
-                alert('Cell already has a tile!');
+                alert('Cell occupied!');
                 return;
             }
-            
             if (selectedTileIndex === null) {
-                alert('First, click on a tile in your rack to select it!');
+                alert('Select a tile from your rack first!');
                 return;
             }
             
             const tile = myRack[selectedTileIndex];
             if (!tile) return;
             
-            placedTiles.set(`${row},${col}`, {
-                letter: tile,
-                rackIndex: selectedTileIndex
-            });
-            
+            placedTiles.set(`${row},${col}`, { letter: tile, rackIndex: selectedTileIndex });
             myRack.splice(selectedTileIndex, 1);
             selectedTileIndex = null;
             
@@ -500,12 +460,9 @@
             myRack.forEach((tile, index) => {
                 const tileDiv = document.createElement('div');
                 tileDiv.className = 'rack-tile';
-                if (selectedTileIndex === index) {
-                    tileDiv.classList.add('selected');
-                }
+                if (selectedTileIndex === index) tileDiv.classList.add('selected');
                 tileDiv.innerHTML = tile === '?' ? '?' : tile;
                 
-                // Add score indicator
                 const scores = {A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10,'?':0};
                 const scoreSpan = document.createElement('span');
                 scoreSpan.style.position = 'absolute';
@@ -539,32 +496,26 @@
         
         function playWord() {
             if (placedTiles.size === 0) {
-                alert('Place some tiles on the board first!');
+                alert('Place some tiles first!');
                 return;
             }
             
             const word = Array.from(placedTiles.values()).map(t => t.letter).join('');
             const score = calculateScore();
             
-            console.log('Playing word:', word, 'Score:', score);
-            
-            socket.emit('playWord', {
-                gameId: gameId,
-                word: word,
-                placements: Array.from(placedTiles.entries()),
-                score: score
-            }, (response) => {
-                console.log('Play response:', response);
-                if (response && response.success) {
-                    placedTiles.clear();
-                    selectedTileIndex = null;
-                    renderBoard();
-                    renderRack();
-                } else {
-                    alert('Invalid word! Try another word.');
-                }
-            });
+            socket.emit('playWord', { gameId, word, placements: Array.from(placedTiles.entries()), score });
         }
+        
+        socket.on('playSuccess', () => {
+            placedTiles.clear();
+            selectedTileIndex = null;
+            renderBoard();
+            renderRack();
+        });
+        
+        socket.on('playFailed', (data) => {
+            alert(data.error);
+        });
         
         function recallTiles() {
             for (const [pos, data] of placedTiles) {
@@ -578,43 +529,39 @@
         
         function exchangeTile() {
             if (selectedTileIndex === null) {
-                alert('Click on a tile in your rack to select it for exchange');
+                alert('Select a tile to exchange');
                 return;
             }
-            
             const tile = myRack[selectedTileIndex];
-            console.log('Exchanging tile:', tile);
-            
-            socket.emit('exchangeTiles', {
-                gameId: gameId,
-                tiles: [tile]
-            }, (response) => {
-                console.log('Exchange response:', response);
-                if (response && response.success) {
-                    selectedTileIndex = null;
-                } else {
-                    alert('Exchange failed: ' + (response?.error || 'Unknown error'));
-                }
-            });
+            socket.emit('exchangeTiles', { gameId, tiles: [tile] });
         }
+        
+        socket.on('exchangeSuccess', () => {
+            selectedTileIndex = null;
+        });
+        
+        socket.on('exchangeFailed', (data) => {
+            alert(data.error);
+        });
         
         function passTurn() {
-            console.log('Passing turn');
-            socket.emit('passTurn', { gameId: gameId }, (response) => {
-                console.log('Pass response:', response);
-                if (response && response.success) {
-                    recallTiles();
-                }
-            });
+            socket.emit('passTurn', { gameId });
         }
         
-        // Attach button handlers
+        socket.on('passSuccess', () => {
+            recallTiles();
+        });
+        
+        socket.on('passFailed', (data) => {
+            alert(data.error);
+        });
+        
         document.getElementById('playWordBtn').onclick = playWord;
         document.getElementById('recallBtn').onclick = recallTiles;
         document.getElementById('exchangeBtn').onclick = exchangeTile;
         document.getElementById('passBtn').onclick = passTurn;
         
-        console.log('Game page loaded! Board size: 15x15');
+        console.log('Game ready!');
     </script>
 </body>
 </html>

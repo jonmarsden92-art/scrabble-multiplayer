@@ -12,8 +12,13 @@ const io = socketIO(server, {
   }
 });
 
-// Serve static files
-app.use(express.static('public'));
+// IMPORTANT: Serve static files from the 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Handle the root route explicitly
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // Game state storage
 const games = new Map();
@@ -75,9 +80,22 @@ function getLetterScore(letter) {
 }
 
 function isValidWord(word) {
-  if (word.length < 2) return true; // Allow any word for demo
-  const commonWords = ['CAT', 'DOG', 'BIRD', 'FISH', 'HAT', 'BAT', 'RAT', 'CAR', 'BUS', 'TRAIN', 'HOUSE', 'TREE', 'FLOWER', 'SUN', 'MOON', 'STAR', 'HELLO', 'WORLD', 'GAME', 'PLAY', 'WORD', 'SCRABBLE', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER'];
-  return commonWords.includes(word.toUpperCase()) || word.length >= 2;
+  if (word.length < 2) return true;
+  // Expanded word list for better gameplay
+  const commonWords = new Set([
+    'CAT', 'DOG', 'BIRD', 'FISH', 'HAT', 'BAT', 'RAT', 'CAR', 'BUS', 'TRAIN', 
+    'HOUSE', 'TREE', 'FLOWER', 'SUN', 'MOON', 'STAR', 'HELLO', 'WORLD', 'GAME', 
+    'PLAY', 'WORD', 'SCRABBLE', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER',
+    'APPLE', 'BANANA', 'CHERRY', 'GRAPE', 'LEMON', 'ORANGE', 'PEAR', 'WATER',
+    'RED', 'BLUE', 'GREEN', 'YELLOW', 'BLACK', 'WHITE', 'BROWN', 'PURPLE',
+    'HAPPY', 'SAD', 'BIG', 'SMALL', 'FAST', 'SLOW', 'HOT', 'COLD', 'WET', 'DRY',
+    'RUN', 'WALK', 'JUMP', 'SWIM', 'FLY', 'SIT', 'STAND', 'EAT', 'DRINK', 'SLEEP',
+    'MOM', 'DAD', 'BROTHER', 'SISTER', 'FRIEND', 'TEACHER', 'STUDENT',
+    'SCHOOL', 'BOOK', 'PENCIL', 'PAPER', 'COMPUTER', 'PHONE', 'TABLET',
+    'MUSIC', 'MOVIE', 'GAME', 'SPORT', 'SOCCER', 'BASKETBALL', 'BASEBALL',
+    'DOG', 'CAT', 'BIRD', 'FISH', 'RABBIT', 'HAMSTER', 'TURTLE', 'SNAKE'
+  ]);
+  return commonWords.has(word.toUpperCase());
 }
 
 function createGame(gameId, player1SocketId, player1Name) {
@@ -291,6 +309,6 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Open http://localhost:${PORT} to play`);
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🌐 Open http://localhost:${PORT} to play`);
 });

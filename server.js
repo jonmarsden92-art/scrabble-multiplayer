@@ -72,8 +72,20 @@ function getGameState(game) {
   return {
     board: game.board,
     players: {
-      1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-      2: game.players[2] ? { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack } : { name: 'Waiting...', score: 0, rack: [] }
+      1: { 
+        name: game.players[1].name, 
+        score: game.players[1].score, 
+        rack: game.players[1].rack 
+      },
+      2: game.players[2] ? { 
+        name: game.players[2].name, 
+        score: game.players[2].score, 
+        rack: game.players[2].rack 
+      } : { 
+        name: 'Waiting...', 
+        score: 0, 
+        rack: [] 
+      }
     },
     currentTurn: game.currentTurn,
     status: game.status,
@@ -110,6 +122,7 @@ io.on('connection', (socket) => {
     socket.join(gameId);
     
     console.log(`Game created: ${gameId} by ${playerName}`);
+    console.log(`Player 1 rack: ${rack1.join(',')}`);
     
     socket.emit('gameCreated', {
       success: true,
@@ -121,14 +134,17 @@ io.on('connection', (socket) => {
   
   // Join existing game
   socket.on('joinGame', ({ gameId, playerName }) => {
+    console.log(`Join attempt: ${playerName} trying to join ${gameId}`);
     const game = games.get(gameId);
     
     if (!game) {
+      console.log(`Game ${gameId} not found`);
       socket.emit('joinFailed', { error: 'Game not found' });
       return;
     }
     
     if (game.players[2] !== null) {
+      console.log(`Game ${gameId} is full`);
       socket.emit('joinFailed', { error: 'Game is full' });
       return;
     }
@@ -148,22 +164,30 @@ io.on('connection', (socket) => {
     socket.join(gameId);
     
     console.log(`${playerName} joined game ${gameId}`);
+    console.log(`Player 2 rack: ${rack2.join(',')}`);
     
-    // Notify both players
     const gameState = getGameState(game);
     
-    // Send to player 2
+    // Send to player 2 (joiner)
     socket.emit('gameJoined', {
       success: true,
       playerNum: 2,
       gameState: gameState
     });
     
-    // Send updated state to player 1
-    io.to(game.players[1].socketId).emit('gameStateUpdate', gameState);
-    
-    // Send to player 2 as well
+    // Send game state to player 2
     socket.emit('gameStateUpdate', gameState);
+    
+    // Send updated state to player 1 (creator)
+    const player1Socket = game.players[1].socketId;
+    console.log(`Sending game update to player 1 (${player1Socket})`);
+    io.to(player1Socket).emit('gameStateUpdate', gameState);
+    
+    // Also broadcast to the room to be safe
+    io.to(gameId).emit('playerJoined', { 
+      message: `${playerName} has joined the game!`,
+      gameState: gameState 
+    });
   });
   
   // Play word
@@ -217,6 +241,8 @@ io.on('connection', (socket) => {
     // Broadcast update to both players
     const gameState = getGameState(game);
     gameState.lastPlay = { player: playerNum, word: word, score: score };
+    
+    console.log(`Word played: ${word} for ${score} points by Player ${playerNum}`);
     
     io.to(gameId).emit('gameStateUpdate', gameState);
     socket.emit('playSuccess', { success: true });

@@ -12,12 +12,14 @@ const io = socketIO(server, {
   }
 });
 
-// IMPORTANT: Serve static files from the 'public' directory
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Handle the root route explicitly
+// Serve index.html from current directory
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Serve socket.io client library
+app.get('/socket.io/socket.io.js', (req, res) => {
+  res.sendFile(path.join(__dirname, 'node_modules', 'socket.io-client', 'dist', 'socket.io.js'));
 });
 
 // Game state storage
@@ -81,19 +83,15 @@ function getLetterScore(letter) {
 
 function isValidWord(word) {
   if (word.length < 2) return true;
-  // Expanded word list for better gameplay
   const commonWords = new Set([
     'CAT', 'DOG', 'BIRD', 'FISH', 'HAT', 'BAT', 'RAT', 'CAR', 'BUS', 'TRAIN', 
     'HOUSE', 'TREE', 'FLOWER', 'SUN', 'MOON', 'STAR', 'HELLO', 'WORLD', 'GAME', 
-    'PLAY', 'WORD', 'SCRABBLE', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER',
-    'APPLE', 'BANANA', 'CHERRY', 'GRAPE', 'LEMON', 'ORANGE', 'PEAR', 'WATER',
-    'RED', 'BLUE', 'GREEN', 'YELLOW', 'BLACK', 'WHITE', 'BROWN', 'PURPLE',
-    'HAPPY', 'SAD', 'BIG', 'SMALL', 'FAST', 'SLOW', 'HOT', 'COLD', 'WET', 'DRY',
-    'RUN', 'WALK', 'JUMP', 'SWIM', 'FLY', 'SIT', 'STAND', 'EAT', 'DRINK', 'SLEEP',
-    'MOM', 'DAD', 'BROTHER', 'SISTER', 'FRIEND', 'TEACHER', 'STUDENT',
-    'SCHOOL', 'BOOK', 'PENCIL', 'PAPER', 'COMPUTER', 'PHONE', 'TABLET',
-    'MUSIC', 'MOVIE', 'GAME', 'SPORT', 'SOCCER', 'BASKETBALL', 'BASEBALL',
-    'DOG', 'CAT', 'BIRD', 'FISH', 'RABBIT', 'HAMSTER', 'TURTLE', 'SNAKE'
+    'PLAY', 'WORD', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER', 'APPLE', 
+    'BANANA', 'CHERRY', 'GRAPE', 'LEMON', 'ORANGE', 'PEAR', 'RED', 'BLUE', 'GREEN',
+    'YELLOW', 'BLACK', 'WHITE', 'HAPPY', 'SAD', 'BIG', 'SMALL', 'FAST', 'SLOW',
+    'HOT', 'COLD', 'WET', 'DRY', 'RUN', 'WALK', 'JUMP', 'SWIM', 'FLY', 'SIT',
+    'STAND', 'EAT', 'DRINK', 'SLEEP', 'MOM', 'DAD', 'SCHOOL', 'BOOK', 'PENCIL',
+    'PAPER', 'COMPUTER', 'PHONE', 'MUSIC', 'MOVIE', 'SPORT', 'SOCCER', 'BASEBALL'
   ]);
   return commonWords.has(word.toUpperCase());
 }

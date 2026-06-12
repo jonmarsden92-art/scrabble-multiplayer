@@ -1,290 +1,273 @@
+cat > index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiplayer Scrabble</title>
+    <title>Scrabble Multiplayer</title>
     <script src="/socket.io/socket.io.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             min-height: 100vh;
+            margin: 0;
             padding: 20px;
+            color: white;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
         }
         .join-screen {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.95);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        .join-card {
-            background: white;
-            padding: 40px;
+            background: rgba(255,255,255,0.1);
             border-radius: 20px;
-            text-align: center;
-            max-width: 400px;
-            width: 90%;
+            padding: 40px;
+            margin-top: 50px;
         }
-        .join-card h1 { margin-bottom: 20px; color: #2c1810; }
-        .join-card input {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
-            border: 2px solid #ddd;
-            border-radius: 8px;
+        input, button {
+            padding: 10px;
+            margin: 10px;
+            border-radius: 5px;
+            border: none;
             font-size: 16px;
         }
-        .join-card button {
-            width: 100%;
-            padding: 12px;
-            margin: 10px 0;
+        button {
             background: #4caf50;
             color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
             cursor: pointer;
-            font-weight: bold;
+            transition: all 0.3s;
         }
-        .join-card button:hover { background: #45a049; }
-        .game-id-display {
-            background: #f0f0f0;
-            padding: 10px;
-            border-radius: 8px;
-            margin: 10px 0;
-            font-family: monospace;
-            font-size: 18px;
+        button:hover {
+            background: #45a049;
+            transform: translateY(-2px);
         }
         .game-container {
             display: none;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-            max-width: 750px;
-            width: 100%;
-            margin: 0 auto;
-        }
-        :root {
-            --board-size: min(85vw, 85vh, 600px);
-            --cell-size: calc(var(--board-size) / 15);
-        }
-        .game-header {
-            display: flex;
-            justify-content: space-between;
-            width: 100%;
-            gap: 10px;
-        }
-        .player-info {
-            background: rgba(255,255,255,0.08);
-            border-radius: 16px;
-            padding: 12px 20px;
-            color: white;
-            text-align: center;
-            flex: 1;
-            border: 3px solid transparent;
-            backdrop-filter: blur(10px);
-        }
-        .player-info.active {
-            border-color: #ffd700;
-            box-shadow: 0 0 25px rgba(255,215,0,0.5);
-            background: rgba(255,215,0,0.12);
-        }
-        .player-name { font-weight: bold; font-size: 1rem; }
-        .player-score { font-size: 1.8rem; font-weight: bold; color: #ffd700; }
-        .player-indicator { font-size: 0.7rem; opacity: 0.8; }
-        .board-wrapper {
-            background: #5d4037;
-            border-radius: 12px;
-            padding: 8px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
         }
         .board {
             display: grid;
-            grid-template-columns: repeat(15, var(--cell-size));
+            grid-template-columns: repeat(15, 35px);
             gap: 1px;
-            background: #3e2723;
+            margin: 20px auto;
+            justify-content: center;
         }
         .cell {
+            width: 35px;
+            height: 35px;
             background: #f5deb3;
-            aspect-ratio: 1;
             display: flex;
             align-items: center;
             justify-content: center;
-            position: relative;
-            font-size: calc(var(--cell-size) * 0.32);
-            font-weight: bold;
+            font-size: 12px;
             cursor: pointer;
+            transition: all 0.2s;
         }
-        .cell .tile {
-            position: absolute;
-            inset: 2px;
-            background: linear-gradient(180deg, #fffef5 0%, #e8dcc8 100%);
-            border-radius: 4px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: calc(var(--cell-size) * 0.48);
-            font-weight: bold;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        .cell:hover {
+            transform: scale(1.05);
+            z-index: 1;
         }
-        .cell.new-tile .tile {
-            background: linear-gradient(180deg, #e8f5e9 0%, #c8e6c9 100%);
-            border: 2px solid #4caf50;
-        }
-        .rack-container {
-            background: #4e342e;
-            border-radius: 16px;
-            padding: 12px;
-            width: 100%;
-        }
-        .rack-tiles {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        .rack-tile {
-            width: calc(var(--cell-size) * 0.85);
-            height: calc(var(--cell-size) * 0.85);
-            background: linear-gradient(180deg, #fffef5 0%, #e0d5c0 100%);
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: calc(var(--cell-size) * 0.5);
-            font-weight: bold;
-            cursor: pointer;
-            position: relative;
-            transition: all 0.15s ease;
-            border: 2px solid #c4a882;
-        }
-        .rack-tile.selected {
-            transform: translateY(-10px);
-            border-color: #ffd700;
-            background: linear-gradient(180deg, #fffde0 0%, #ffecb3 100%);
-        }
-        .btn-row {
+        .rack {
             display: flex;
             gap: 10px;
-            flex-wrap: wrap;
             justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
         }
-        .btn {
-            padding: 10px 20px;
-            border-radius: 25px;
+        .rack-tile {
+            width: 50px;
+            height: 50px;
+            background: #fffef5;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
             font-weight: bold;
             cursor: pointer;
-            border: none;
-            text-transform: uppercase;
-            font-family: inherit;
+            transition: all 0.2s;
+            position: relative;
         }
-        .btn-play { background: #4caf50; color: white; }
-        .btn-recall { background: #ff9800; color: white; }
-        .btn-exchange { background: #9c27b0; color: white; }
-        .btn-pass { background: #607d8b; color: white; }
-        .message-area {
-            color: white;
-            text-align: center;
-            padding: 8px;
-            border-radius: 20px;
+        .rack-tile:hover {
+            transform: translateY(-5px);
+        }
+        .selected {
+            border: 3px solid gold;
+            transform: translateY(-10px);
+        }
+        .player-info {
+            display: inline-block;
+            margin: 20px;
+            padding: 10px;
             background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            min-width: 150px;
         }
-        .waiting-message { text-align: center; color: white; padding: 20px; font-size: 18px; }
-        .cell.tw { background: #d32f2f; color: white; }
-        .cell.dw { background: #f48fb1; color: #5d0000; }
-        .cell.tl { background: #1565c0; color: white; }
-        .cell.dl { background: #90caf9; color: #003c8f; }
-        @media (max-width: 650px) {
-            .btn { padding: 6px 12px; font-size: 12px; }
+        .active {
+            border: 2px solid gold;
+            background: rgba(255,215,0,0.2);
+            box-shadow: 0 0 20px rgba(255,215,0,0.3);
+        }
+        #message {
+            margin: 10px;
+            padding: 10px;
+            background: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .game-id-display {
+            background: #000;
+            padding: 15px;
+            border-radius: 10px;
+            font-family: monospace;
+            font-size: 24px;
+            letter-spacing: 2px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #ff6b6b;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
-    <div class="join-screen" id="joinScreen">
-        <div class="join-card">
-            <h1>🎲 Scrabble Multiplayer</h1>
-            <button onclick="showCreate()">Create New Game</button>
-            <button onclick="showJoin()">Join Existing Game</button>
-            <div id="createDiv" style="display:none; margin-top:20px;">
-                <input type="text" id="createName" placeholder="Your Name" maxlength="20">
-                <button onclick="createGame()">Create Game</button>
-                <button onclick="hideCreate()">Cancel</button>
-            </div>
-            <div id="joinDiv" style="display:none; margin-top:20px;">
-                <input type="text" id="joinCode" placeholder="Game Code" maxlength="10">
-                <input type="text" id="joinName" placeholder="Your Name" maxlength="20">
-                <button onclick="joinGame()">Join Game</button>
-                <button onclick="hideJoin()">Cancel</button>
-            </div>
-            <div id="waitingDiv" style="display:none; margin-top:20px;">
-                <div class="game-id-display" id="gameCodeDisplay"></div>
-                <div class="waiting-message">Waiting for second player...</div>
-                <button onclick="copyCode()">Copy Code</button>
-            </div>
-        </div>
-    </div>
-    <div class="game-container" id="gameContainer">
-        <div class="game-header">
-            <div class="player-info" id="p1Info">
-                <div class="player-name" id="p1Name">Player 1</div>
-                <div class="player-score" id="p1Score">0</div>
-                <div class="player-indicator" id="p1Turn"></div>
-            </div>
-            <div class="player-info" id="p2Info">
-                <div class="player-name" id="p2Name">Player 2</div>
-                <div class="player-score" id="p2Score">0</div>
-                <div class="player-indicator" id="p2Turn"></div>
-            </div>
-        </div>
-        <div class="board-wrapper">
-            <div class="board" id="board"></div>
-        </div>
-        <div class="message-area" id="message">Waiting for game...</div>
-        <div class="rack-container">
-            <div class="rack-tiles" id="rack"></div>
-        </div>
-        <div class="btn-row">
-            <button class="btn btn-play" id="playBtn">▶ Play</button>
-            <button class="btn btn-recall" id="recallBtn">↩ Recall</button>
-            <button class="btn btn-exchange" id="exchangeBtn">🔄 Exchange</button>
-            <button class="btn btn-pass" id="passBtn">⏭ Pass</button>
-        </div>
-    </div>
-    <script>
-        let socket, gameId, myPlayerNum, myRack = [], currentTurn = 1, selectedTile = null;
-        let placedTiles = new Map(), board = Array(15).fill().map(() => Array(15).fill(null));
-        const premium = {};
-        [[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]].forEach(([r,c]) => premium[${r},${c}] = 'tw');
-        [[1,1],[1,13],[2,2],[2,12],[3,3],[3,11],[4,4],[4,10],[10,4],[10,10],[11,3],[11,11],[12,2],[12,12],[13,1],[13,13]].forEach(([r,c]) => premium[${r},${c}] = 'dw');
-        [[1,5],[1,9],[5,1],[5,5],[5,9],[5,13],[9,1],[9,5],[9,9],[9,13],[13,5],[13,9]].forEach(([r,c]) => premium[${r},${c}] = 'tl');
-        [[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12],[7,3],[7,11],[8,2],[8,6],[8,8],[8,12],[11,0],[11,7],[11,14],[12,6],[12,8],[14,3],[14,11]].forEach(([r,c]) => premium[${r},${c}] = 'dl');
+    <div class="container">
+        <h1>🎲 Scrabble Multiplayer</h1>
         
-        function showCreate() { document.getElementById('createDiv').style.display = 'block'; document.getElementById('joinDiv').style.display = 'none'; }
-        function showJoin() { document.getElementById('createDiv').style.display = 'none'; document.getElementById('joinDiv').style.display = 'block'; }
-        function hideCreate() { document.getElementById('createDiv').style.display = 'none'; }
-        function hideJoin() { document.getElementById('joinDiv').style.display = 'none'; }
-        function copyCode() { navigator.clipboard.writeText(document.getElementById('gameCodeDisplay').innerText); alert('Code copied!'); }
+        <!-- Join Screen -->
+        <div id="joinScreen" class="join-screen">
+            <button id="createGameBtn">Create New Game</button>
+            <button id="joinGameBtn">Join Existing Game</button>
+            
+            <div id="createDiv" style="display:none; margin-top:20px;">
+                <input type="text" id="createName" placeholder="Your Name" autocomplete="off">
+                <button id="confirmCreateBtn">Create Game</button>
+                <button id="cancelCreateBtn">Cancel</button>
+            </div>
+            
+            <div id="joinDiv" style="display:none; margin-top:20px;">
+                <input type="text" id="joinCode" placeholder="Game Code" autocomplete="off" style="text-transform:uppercase">
+                <input type="text" id="joinName" placeholder="Your Name" autocomplete="off">
+                <button id="confirmJoinBtn">Join Game</button>
+                <button id="cancelJoinBtn">Cancel</button>
+            </div>
+            
+            <div id="waitingDiv" style="display:none; margin-top:20px;">
+                <h3>Share this code with Player 2:</h3>
+                <div class="game-id-display" id="gameCode"></div>
+                <button id="copyCodeBtn">📋 Copy Code</button>
+                <p style="margin-top:20px;">Waiting for second player to join...</p>
+                <div class="loader"></div>
+            </div>
+        </div>
+        
+        <!-- Game Container -->
+        <div id="gameContainer" class="game-container">
+            <div>
+                <div id="player1Info" class="player-info">
+                    <strong id="p1Name">Player 1</strong><br>
+                    Score: <span id="p1Score">0</span>
+                </div>
+                <div id="player2Info" class="player-info">
+                    <strong id="p2Name">Player 2</strong><br>
+                    Score: <span id="p2Score">0</span>
+                </div>
+            </div>
+            
+            <div id="board" class="board"></div>
+            
+            <div id="message">Waiting for game to start...</div>
+            
+            <div class="rack" id="rack"></div>
+            
+            <div>
+                <button id="playBtn">▶ Play Word</button>
+                <button id="recallBtn">↩ Recall</button>
+                <button id="exchangeBtn">🔄 Exchange</button>
+                <button id="passBtn">⏭ Pass</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let socket = null;
+        let gameId = null;
+        let myPlayerNum = null;
+        let myRack = [];
+        let currentTurn = 1;
+        let selectedTile = null;
+        let placedTiles = new Map();
+        let board = Array(15).fill().map(() => Array(15).fill(null));
+        
+        // DOM Elements
+        const joinScreen = document.getElementById('joinScreen');
+        const gameContainer = document.getElementById('gameContainer');
+        const createDiv = document.getElementById('createDiv');
+        const joinDiv = document.getElementById('joinDiv');
+        const waitingDiv = document.getElementById('waitingDiv');
+        
+        // Button event listeners
+        document.getElementById('createGameBtn').onclick = () => {
+            createDiv.style.display = 'block';
+            joinDiv.style.display = 'none';
+            waitingDiv.style.display = 'none';
+        };
+        
+        document.getElementById('joinGameBtn').onclick = () => {
+            createDiv.style.display = 'none';
+            joinDiv.style.display = 'block';
+            waitingDiv.style.display = 'none';
+        };
+        
+        document.getElementById('cancelCreateBtn').onclick = () => {
+            createDiv.style.display = 'none';
+        };
+        
+        document.getElementById('cancelJoinBtn').onclick = () => {
+            joinDiv.style.display = 'none';
+        };
+        
+        document.getElementById('confirmCreateBtn').onclick = createGame;
+        document.getElementById('confirmJoinBtn').onclick = joinGame;
+        document.getElementById('copyCodeBtn').onclick = copyCode;
+        
+        document.getElementById('playBtn').onclick = playWord;
+        document.getElementById('recallBtn').onclick = recallTiles;
+        document.getElementById('exchangeBtn').onclick = exchangeTile;
+        document.getElementById('passBtn').onclick = passTurn;
+        
+        function copyCode() {
+            const code = document.getElementById('gameCode').innerText;
+            navigator.clipboard.writeText(code);
+            alert('Game code copied: ' + code);
+        }
         
         function createGame() {
             const name = document.getElementById('createName').value.trim();
-            if (!name) return alert('Enter your name');
-            socket = io();
-            socket.emit('createGame', { playerName: name }, (res) => {
-                if (res.success) {
-                    gameId = res.gameId;
-                    myPlayerNum = 1;
-                    document.getElementById('gameCodeDisplay').innerText = gameId;
-                    document.getElementById('createDiv').style.display = 'none';
-                    document.getElementById('waitingDiv').style.display = 'block';
-                    setupSocket();
+            if (!name) {
+                alert('Please enter your name');
+                return;
+            }
+            
+            console.log('Creating game with name:', name);
+            
+            // Connect to socket if not already connected
+            if (!socket) {
+                socket = io();
+                setupSocketListeners();
+            }
+            
+            socket.emit('createGame', { playerName: name }, (response) => {
+                console.log('Create game response:', response);
+                if (response.success) {
+                    gameId = response.gameId;
+                    myPlayerNum = response.playerNum;
+                    document.getElementById('gameCode').innerText = gameId;
+                    createDiv.style.display = 'none';
+                    waitingDiv.style.display = 'block';
+                } else {
+                    alert('Failed to create game: ' + (response.error || 'Unknown error'));
                 }
             });
         }
@@ -292,102 +275,167 @@
         function joinGame() {
             const code = document.getElementById('joinCode').value.trim().toUpperCase();
             const name = document.getElementById('joinName').value.trim();
-            if (!code || !name) return alert('Enter game code and name');
-            socket = io();
-            socket.emit('joinGame', { gameId: code, playerName: name }, (res) => {
-                if (res.success) {
+            
+            if (!code || !name) {
+                alert('Please enter game code and your name');
+                return;
+            }
+            
+            console.log('Joining game:', code, name);
+            
+            // Connect to socket if not already connected
+            if (!socket) {
+                socket = io();
+                setupSocketListeners();
+            }
+            
+            socket.emit('joinGame', { gameId: code, playerName: name }, (response) => {
+                console.log('Join game response:', response);
+                if (response.success) {
                     gameId = code;
-                    myPlayerNum = 2;
+                    myPlayerNum = response.playerNum;
                     startGame();
-                    setupSocket();
-                } else alert('Failed to join: ' + (res.error || 'Unknown error'));
+                } else {
+                    alert('Failed to join: ' + (response.error || 'Unknown error'));
+                }
             });
         }
         
         function startGame() {
-            document.getElementById('joinScreen').style.display = 'none';
-            document.getElementById('gameContainer').style.display = 'flex';
+            joinScreen.style.display = 'none';
+            gameContainer.style.display = 'block';
         }
         
-        function setupSocket() {
+        function setupSocketListeners() {
+            socket.on('connect', () => {
+                console.log('Socket connected!', socket.id);
+            });
+            
+            socket.on('connect_error', (error) => {
+                console.error('Socket connection error:', error);
+                alert('Connection error! Please refresh the page.');
+            });
+            
             socket.on('gameStateUpdate', (data) => {
+                console.log('Game state update:', data);
                 board = data.board;
                 currentTurn = data.currentTurn;
+                
+                // Update player info
                 document.getElementById('p1Name').innerText = data.players[1].name;
                 document.getElementById('p1Score').innerText = data.players[1].score;
                 document.getElementById('p2Name').innerText = data.players[2].name || 'Waiting...';
                 document.getElementById('p2Score').innerText = data.players[2].score || 0;
-                document.getElementById('p1Info').classList.toggle('active', currentTurn === 1);
-                document.getElementById('p2Info').classList.toggle('active', currentTurn === 2);
-                document.getElementById('p1Turn').innerText = currentTurn === 1 ? '● Your Turn' : '';
-                document.getElementById('p2Turn').innerText = currentTurn === 2 ? '● Your Turn' : '';
-                if (myPlayerNum === 1) myRack = data.players[1].rack || [];
-                else myRack = data.players[2].rack || [];
-                const isMyTurn = (currentTurn === myPlayerNum);
-                const msg = document.getElementById('message');
-                if (!isMyTurn && currentTurn) msg.innerText = `Player ${currentTurn}'s turn...`;
-                else if (isMyTurn) msg.innerText = 'Your turn! Place tiles and click Play';
-                if (data.lastPlay) {
-                    msg.innerText = `Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
-                    setTimeout(() => { if (isMyTurn) msg.innerText = 'Your turn! Place tiles and click Play'; }, 3000);
+                
+                // Update active player highlight
+                document.getElementById('player1Info').classList.toggle('active', currentTurn === 1);
+                document.getElementById('player2Info').classList.toggle('active', currentTurn === 2);
+                
+                // Update my rack
+                if (myPlayerNum === 1) {
+                    myRack = data.players[1].rack || [];
+                } else {
+                    myRack = data.players[2].rack || [];
                 }
+                
+                // Update message
+                const isMyTurn = (currentTurn === myPlayerNum);
+                const messageDiv = document.getElementById('message');
+                
+                if (!isMyTurn && currentTurn) {
+                    messageDiv.innerText = `⏳ Waiting for Player ${currentTurn}'s turn...`;
+                } else if (isMyTurn) {
+                    messageDiv.innerText = '🎯 Your turn! Place tiles on the board and click Play Word';
+                }
+                
+                if (data.lastPlay) {
+                    messageDiv.innerText = `🎉 Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
+                    setTimeout(() => {
+                        if (isMyTurn) {
+                            messageDiv.innerText = '🎯 Your turn! Place tiles on the board and click Play Word';
+                        }
+                    }, 3000);
+                }
+                
                 renderBoard();
                 renderRack();
             });
-            socket.on('playerDisconnected', () => { alert('Other player disconnected!'); location.reload(); });
+            
+            socket.on('playerDisconnected', (data) => {
+                alert(`⚠️ Player ${data.playerNum} disconnected! The game will end.`);
+                location.reload();
+            });
         }
         
         function renderBoard() {
             const boardDiv = document.getElementById('board');
             boardDiv.innerHTML = '';
-            for (let r = 0; r < 15; r++) {
-                for (let c = 0; c < 15; c++) {
+            
+            for (let row = 0; row < 15; row++) {
+                for (let col = 0; col < 15; col++) {
                     const cell = document.createElement('div');
                     cell.className = 'cell';
-                    const p = premium[${r},${c}];
-                    if (p) cell.classList.add(p);
-                    const tile = board[r][c];
-                    const placed = placedTiles.get(`${r},${c}`);
-                    if (placed) {
-                        const tileDiv = document.createElement('div');
-                        tileDiv.className = 'tile';
-                        tileDiv.style.background = '#e8f5e9';
-                        tileDiv.style.border = '2px solid #4caf50';
-                        tileDiv.innerText = placed.letter;
-                        cell.appendChild(tileDiv);
-                        cell.onclick = () => removePlaced(r, c);
+                    
+                    const tile = board[row][col];
+                    const placedTile = placedTiles.get(`${row},${col}`);
+                    
+                    if (placedTile) {
+                        cell.innerText = placedTile.letter;
+                        cell.style.background = '#c8e6c9';
+                        cell.style.border = '2px solid #4caf50';
+                        cell.onclick = () => removePlacedTile(row, col);
                     } else if (tile) {
-                        const tileDiv = document.createElement('div');
-                        tileDiv.className = 'tile';
-                        tileDiv.innerText = tile.letter;
-                        cell.appendChild(tileDiv);
+                        cell.innerText = tile.letter;
+                        cell.style.background = '#fffef5';
                     } else {
-                        if (p === 'tw') cell.innerText = 'TW';
-                        else if (p === 'dw') cell.innerText = 'DW';
-                        else if (p === 'tl') cell.innerText = 'TL';
-                        else if (p === 'dl') cell.innerText = 'DL';
-                        if (currentTurn === myPlayerNum && !tile && !placed) cell.onclick = () => placeTile(r, c);
+                        cell.style.background = '#f5deb3';
+                        if (currentTurn === myPlayerNum && !tile) {
+                            cell.onclick = () => selectBoardCell(row, col);
+                        }
                     }
+                    
                     boardDiv.appendChild(cell);
                 }
             }
         }
         
-        function placeTile(row, col) {
-            if (currentTurn !== myPlayerNum) return alert('Not your turn');
-            if (board[row][col] !== null) return alert('Cell occupied');
-            if (placedTiles.has(`${row},${col}`)) return removePlaced(row, col);
-            if (selectedTile === null) return alert('Select a tile from your rack');
+        function selectBoardCell(row, col) {
+            if (currentTurn !== myPlayerNum) {
+                alert('Not your turn!');
+                return;
+            }
+            
+            if (board[row][col] !== null) {
+                alert('Cell already occupied!');
+                return;
+            }
+            
+            if (placedTiles.has(`${row},${col}`)) {
+                removePlacedTile(row, col);
+                return;
+            }
+            
+            if (selectedTile === null) {
+                alert('Select a tile from your rack first!');
+                return;
+            }
+            
             const tile = myRack[selectedTile];
             if (!tile) return;
-            placedTiles.set(`${row},${col}`, { letter: tile, rackIndex: selectedTile });
+            
+            placedTiles.set(`${row},${col}`, {
+                letter: tile,
+                rackIndex: selectedTile
+            });
+            
             myRack.splice(selectedTile, 1);
             selectedTile = null;
+            
             renderBoard();
             renderRack();
         }
         
-        function removePlaced(row, col) {
+        function removePlacedTile(row, col) {
             const placed = placedTiles.get(`${row},${col}`);
             if (placed) {
                 myRack.splice(placed.rackIndex, 0, placed.letter);
@@ -400,45 +448,95 @@
         function renderRack() {
             const rackDiv = document.getElementById('rack');
             rackDiv.innerHTML = '';
-            myRack.forEach((tile, idx) => {
-                const td = document.createElement('div');
-                td.className = 'rack-tile' + (selectedTile === idx ? ' selected' : '');
-                td.innerText = tile === '?' ? '?' : tile;
-                const score = {A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10, '?':0}[tile] || 1;
-                const sub = document.createElement('span');
-                sub.innerText = score;
-                sub.style.fontSize = '10px';
-                sub.style.position = 'absolute';
-                sub.style.bottom = '2px';
-                sub.style.right = '4px';
-                td.appendChild(sub);
-                td.onclick = () => { selectedTile = idx; renderRack(); };
-                rackDiv.appendChild(td);
+            
+            if (!myRack || myRack.length === 0) {
+                rackDiv.innerHTML = '<div style="color: #999;">No tiles in rack</div>';
+                return;
+            }
+            
+            myRack.forEach((tile, index) => {
+                const tileDiv = document.createElement('div');
+                tileDiv.className = 'rack-tile';
+                if (selectedTile === index) {
+                    tileDiv.classList.add('selected');
+                }
+                tileDiv.innerText = tile === '?' ? '?' : tile;
+                
+                // Add score indicator
+                const scores = {
+                    'A':1,'B':3,'C':3,'D':2,'E':1,'F':4,'G':2,'H':4,'I':1,'J':8,
+                    'K':5,'L':1,'M':3,'N':1,'O':1,'P':3,'Q':10,'R':1,'S':1,'T':1,
+                    'U':1,'V':4,'W':4,'X':8,'Y':4,'Z':10,'?':0
+                };
+                const score = scores[tile] || 1;
+                const scoreSpan = document.createElement('span');
+                scoreSpan.style.position = 'absolute';
+                scoreSpan.style.bottom = '2px';
+                scoreSpan.style.right = '4px';
+                scoreSpan.style.fontSize = '10px';
+                scoreSpan.innerText = score;
+                tileDiv.appendChild(scoreSpan);
+                
+                tileDiv.onclick = () => {
+                    if (currentTurn !== myPlayerNum) {
+                        alert('Not your turn!');
+                        return;
+                    }
+                    selectedTile = index;
+                    renderRack();
+                };
+                
+                rackDiv.appendChild(tileDiv);
             });
         }
         
         function calculateScore() {
             let total = 0;
-            for (let [pos, data] of placedTiles) {
-                const letter = data.letter;
-                const score = {A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10, '?':0}[letter] || 1;
-                total += score;
+            const scores = {
+                'A':1,'B':3,'C':3,'D':2,'E':1,'F':4,'G':2,'H':4,'I':1,'J':8,
+                'K':5,'L':1,'M':3,'N':1,'O':1,'P':3,'Q':10,'R':1,'S':1,'T':1,
+                'U':1,'V':4,'W':4,'X':8,'Y':4,'Z':10,'?':0
+            };
+            
+            for (const [pos, data] of placedTiles) {
+                total += scores[data.letter] || 1;
             }
             return total;
         }
         
         function playWord() {
-            if (placedTiles.size === 0) return alert('No tiles placed');
+            if (placedTiles.size === 0) {
+                alert('No tiles placed on the board!');
+                return;
+            }
+            
             const word = Array.from(placedTiles.values()).map(t => t.letter).join('');
             const score = calculateScore();
-            socket.emit('playWord', { gameId, word, placements: Array.from(placedTiles.entries()), score }, (res) => {
-                if (res.success) { placedTiles.clear(); selectedTile = null; renderBoard(); renderRack(); }
-                else alert('Invalid word: ' + (res.error || 'Not in dictionary'));
+            
+            console.log('Playing word:', word, 'score:', score);
+            
+            socket.emit('playWord', {
+                gameId: gameId,
+                word: word,
+                placements: Array.from(placedTiles.entries()),
+                score: score
+            }, (response) => {
+                console.log('Play word response:', response);
+                if (response.success) {
+                    placedTiles.clear();
+                    selectedTile = null;
+                    renderBoard();
+                    renderRack();
+                } else {
+                    alert('Invalid word: ' + (response.error || 'Word not in dictionary'));
+                }
             });
         }
         
         function recallTiles() {
-            for (let [pos, data] of placedTiles) myRack.splice(data.rackIndex, 0, data.letter);
+            for (const [pos, data] of placedTiles) {
+                myRack.splice(data.rackIndex, 0, data.letter);
+            }
             placedTiles.clear();
             selectedTile = null;
             renderBoard();
@@ -446,22 +544,39 @@
         }
         
         function exchangeTile() {
-            if (selectedTile === null) return alert('Select a tile to exchange');
-            const tile = myRack[selectedTile];
-            socket.emit('exchangeTiles', { gameId, tiles: [tile] }, (res) => {
-                if (res.success) { selectedTile = null; }
-                else alert('Exchange failed');
+            if (selectedTile === null) {
+                alert('Select a tile from your rack to exchange!');
+                return;
+            }
+            
+            const tileToExchange = myRack[selectedTile];
+            console.log('Exchanging tile:', tileToExchange);
+            
+            socket.emit('exchangeTiles', {
+                gameId: gameId,
+                tiles: [tileToExchange]
+            }, (response) => {
+                console.log('Exchange response:', response);
+                if (response.success) {
+                    selectedTile = null;
+                } else {
+                    alert('Failed to exchange: ' + (response.error || 'Unknown error'));
+                }
             });
         }
         
         function passTurn() {
-            socket.emit('passTurn', { gameId }, (res) => { if (res.success) recallTiles(); });
+            console.log('Passing turn');
+            socket.emit('passTurn', { gameId: gameId }, (response) => {
+                console.log('Pass turn response:', response);
+                if (response.success) {
+                    recallTiles();
+                }
+            });
         }
         
-        document.getElementById('playBtn').onclick = playWord;
-        document.getElementById('recallBtn').onclick = recallTiles;
-        document.getElementById('exchangeBtn').onclick = exchangeTile;
-        document.getElementById('passBtn').onclick = passTurn;
+        console.log('Game loaded! Ready to play.');
     </script>
 </body>
 </html>
+EOF

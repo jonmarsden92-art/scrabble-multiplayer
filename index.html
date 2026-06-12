@@ -134,11 +134,6 @@
             color: #d4a574;
             font-size: 20px;
         }
-        .loading {
-            text-align: center;
-            padding: 20px;
-            font-size: 18px;
-        }
     </style>
 </head>
 <body>
@@ -167,7 +162,7 @@
                 <h3>Share this code with your friend:</h3>
                 <div class="game-code" id="gameCodeDisplay"></div>
                 <button id="copyCode">📋 Copy Code</button>
-                <div class="loading" id="waitingStatus">⏳ Waiting for Player 2 to join...</div>
+                <div id="waitingStatus" class="status">⏳ Waiting for Player 2 to join...</div>
             </div>
         </div>
         
@@ -197,7 +192,6 @@
     </div>
 
     <script>
-        // Premium squares
         const premiumSquares = {};
         [[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'tw');
         [[1,1],[1,13],[2,2],[2,12],[3,3],[3,11],[4,4],[4,10],[10,4],[10,10],[11,3],[11,11],[12,2],[12,12],[13,1],[13,13]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'dw');
@@ -215,6 +209,7 @@
         
         const joinScreen = document.getElementById('joinScreen');
         const gameContainer = document.getElementById('gameContainer');
+        const waitingStatus = document.getElementById('waitingStatus');
         
         document.getElementById('createBtn').onclick = () => {
             document.getElementById('createPanel').style.display = 'block';
@@ -274,10 +269,12 @@
                 gameId = data.gameId;
                 myPlayerNumber = data.playerNum;
                 boardData = data.gameState.board;
+                myRack = data.gameState.players[1].rack;
                 
                 document.getElementById('gameCodeDisplay').innerText = gameId;
                 document.getElementById('createPanel').style.display = 'none';
                 document.getElementById('waitingPanel').style.display = 'block';
+                waitingStatus.innerHTML = '⏳ Waiting for Player 2 to join...';
                 
                 setupGameListeners();
             });
@@ -299,6 +296,8 @@
             socket.on('gameJoined', (data) => {
                 console.log('Game joined:', data);
                 myPlayerNumber = data.playerNum;
+                boardData = data.gameState.board;
+                myRack = data.gameState.players[2].rack;
                 startGame();
                 setupGameListeners();
             });
@@ -320,18 +319,21 @@
         
         function setupGameListeners() {
             socket.on('gameStateUpdate', (data) => {
-                console.log('Game state update:', data);
+                console.log('Game state update received!', data);
                 boardData = data.board;
                 currentTurn = data.currentTurn;
                 
+                // Update player info
                 document.getElementById('p1Name').innerText = data.players[1].name;
                 document.getElementById('p1Score').innerText = data.players[1].score;
                 document.getElementById('p2Name').innerText = data.players[2].name;
                 document.getElementById('p2Score').innerText = data.players[2].score;
                 
+                // Update active player highlight
                 document.getElementById('p1Info').classList.toggle('active', currentTurn === 1);
                 document.getElementById('p2Info').classList.toggle('active', currentTurn === 2);
                 
+                // Update my rack
                 if (myPlayerNumber === 1) {
                     myRack = data.players[1].rack || [];
                 } else {
@@ -363,6 +365,36 @@
                 renderRack();
             });
             
+            socket.on('playerJoined', (data) => {
+                console.log('Player joined:', data);
+                if (waitingStatus) {
+                    waitingStatus.innerHTML = '✅ Player 2 has joined! Starting game...';
+                    setTimeout(() => {
+                        startGame();
+                        if (data.gameState) {
+                            boardData = data.gameState.board;
+                            currentTurn = data.gameState.currentTurn;
+                            if (myPlayerNumber === 1) {
+                                myRack = data.gameState.players[1].rack;
+                            }
+                            renderBoard();
+                            renderRack();
+                        }
+                    }, 1000);
+                }
+            });
+            
+            socket.on('gameReady', (data) => {
+                console.log('Game ready:', data);
+                startGame();
+                if (data.gameState) {
+                    boardData = data.gameState.board;
+                    currentTurn = data.gameState.currentTurn;
+                    renderBoard();
+                    renderRack();
+                }
+            });
+            
             socket.on('playerDisconnected', (data) => {
                 alert(`Player ${data.playerNum} disconnected!`);
                 location.reload();
@@ -371,6 +403,7 @@
         
         function renderBoard() {
             const boardDiv = document.getElementById('board');
+            if (!boardDiv) return;
             boardDiv.innerHTML = '';
             
             for (let row = 0; row < 15; row++) {
@@ -450,6 +483,7 @@
         
         function renderRack() {
             const rackDiv = document.getElementById('rack');
+            if (!rackDiv) return;
             rackDiv.innerHTML = '';
             
             if (!myRack || myRack.length === 0) {

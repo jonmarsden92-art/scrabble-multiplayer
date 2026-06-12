@@ -14,7 +14,7 @@
             padding: 20px;
             color: white;
         }
-        .container { max-width: 800px; margin: 0 auto; text-align: center; }
+        .container { max-width: 900px; margin: 0 auto; text-align: center; }
         .join-screen {
             background: rgba(255,255,255,0.1);
             border-radius: 20px;
@@ -38,20 +38,31 @@
         .game-container { display: none; }
         .board {
             display: grid;
-            grid-template-columns: repeat(15, 35px);
-            gap: 1px;
+            grid-template-columns: repeat(15, 40px);
+            gap: 2px;
             margin: 20px auto;
             justify-content: center;
+            background: #3e2723;
+            padding: 10px;
+            border-radius: 10px;
         }
         .cell {
-            width: 35px;
-            height: 35px;
+            width: 40px;
+            height: 40px;
             background: #f5deb3;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: bold;
             cursor: pointer;
+            transition: all 0.2s;
+            border-radius: 3px;
+        }
+        .cell:hover {
+            transform: scale(1.05);
+            z-index: 1;
+            box-shadow: 0 0 10px rgba(255,215,0,0.5);
         }
         .rack {
             display: flex;
@@ -59,42 +70,54 @@
             justify-content: center;
             margin: 20px 0;
             flex-wrap: wrap;
+            background: #4e342e;
+            padding: 20px;
+            border-radius: 10px;
         }
         .rack-tile {
-            width: 50px;
-            height: 50px;
-            background: #fffef5;
-            border-radius: 5px;
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(180deg, #fffef5 0%, #e0d5c0 100%);
+            border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 24px;
+            font-size: 28px;
             font-weight: bold;
             cursor: pointer;
             position: relative;
             color: #2c1810;
+            transition: all 0.2s;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+        .rack-tile:hover {
+            transform: translateY(-5px);
         }
         .rack-tile.selected {
             border: 3px solid gold;
             transform: translateY(-10px);
+            box-shadow: 0 8px 16px rgba(255,215,0,0.4);
         }
         .player-info {
             display: inline-block;
             margin: 20px;
-            padding: 15px;
+            padding: 15px 25px;
             background: rgba(0,0,0,0.5);
             border-radius: 10px;
-            min-width: 150px;
+            min-width: 180px;
         }
         .active {
             border: 2px solid gold;
             background: rgba(255,215,0,0.2);
+            box-shadow: 0 0 20px rgba(255,215,0,0.3);
         }
         #message {
             margin: 10px;
-            padding: 10px;
+            padding: 15px;
             background: rgba(0,0,0,0.5);
             border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
         }
         .game-code {
             background: #000;
@@ -103,8 +126,25 @@
             font-size: 28px;
             font-family: monospace;
             margin: 10px 0;
+            letter-spacing: 3px;
         }
         .status { margin-top: 20px; color: #ffd700; }
+        .score-value { font-size: 24px; font-weight: bold; color: #ffd700; }
+        .premium-tw { background: #d32f2f; color: white; }
+        .premium-dw { background: #f48fb1; color: #5d0000; }
+        .premium-tl { background: #1565c0; color: white; }
+        .premium-dl { background: #90caf9; color: #003c8f; }
+        .center-star { background: #f5deb3; position: relative; }
+        .center-star::after {
+            content: '★';
+            position: absolute;
+            color: #d4a574;
+            font-size: 20px;
+        }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -113,7 +153,7 @@
         
         <!-- Join Screen -->
         <div id="joinScreen" class="join-screen">
-            <h2>Welcome!</h2>
+            <h2>Welcome to Scrabble!</h2>
             <button id="createBtn">🎮 Create New Game</button>
             <button id="joinBtn">🔗 Join Existing Game</button>
             
@@ -131,10 +171,10 @@
             </div>
             
             <div id="waitingPanel" style="display:none; margin-top:20px;">
-                <h3>Share this code:</h3>
+                <h3>Share this code with your friend:</h3>
                 <div class="game-code" id="gameCodeDisplay"></div>
                 <button id="copyCode">📋 Copy Code</button>
-                <div class="status">⏳ Waiting for player 2 to join...</div>
+                <div class="status">⏳ Waiting for Player 2 to join...</div>
             </div>
         </div>
         
@@ -143,28 +183,40 @@
             <div>
                 <div id="p1Info" class="player-info">
                     <strong id="p1Name">Player 1</strong><br>
-                    Score: <span id="p1Score">0</span>
+                    Score: <span class="score-value" id="p1Score">0</span>
                 </div>
                 <div id="p2Info" class="player-info">
                     <strong id="p2Name">Player 2</strong><br>
-                    Score: <span id="p2Score">0</span>
+                    Score: <span class="score-value" id="p2Score">0</span>
                 </div>
             </div>
             
-            <div id="board"></div>
+            <div id="board" class="board"></div>
             <div id="message">Loading game...</div>
             <div id="rack" class="rack"></div>
             
-            <div>
-                <button id="playWordBtn">▶ Play Word</button>
-                <button id="recallBtn">↩ Recall</button>
-                <button id="exchangeBtn">🔄 Exchange</button>
-                <button id="passBtn">⏭ Pass</button>
+            <div style="margin-top: 20px;">
+                <button id="playWordBtn" style="background: #4caf50;">▶ Play Word</button>
+                <button id="recallBtn" style="background: #ff9800;">↩ Recall</button>
+                <button id="exchangeBtn" style="background: #9c27b0;">🔄 Exchange</button>
+                <button id="passBtn" style="background: #607d8b;">⏭ Pass</button>
             </div>
         </div>
     </div>
 
     <script>
+        // Premium squares configuration
+        const premiumSquares = {};
+        
+        // Triple Word
+        [[0,0],[0,7],[0,14],[7,0],[7,14],[14,0],[14,7],[14,14]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'tw');
+        // Double Word
+        [[1,1],[1,13],[2,2],[2,12],[3,3],[3,11],[4,4],[4,10],[10,4],[10,10],[11,3],[11,11],[12,2],[12,12],[13,1],[13,13]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'dw');
+        // Triple Letter
+        [[1,5],[1,9],[5,1],[5,5],[5,9],[5,13],[9,1],[9,5],[9,9],[9,13],[13,5],[13,9]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'tl');
+        // Double Letter
+        [[0,3],[0,11],[2,6],[2,8],[3,0],[3,7],[3,14],[6,2],[6,6],[6,8],[6,12],[7,3],[7,11],[8,2],[8,6],[8,8],[8,12],[11,0],[11,7],[11,14],[12,6],[12,8],[14,3],[14,11]].forEach(([r,c]) => premiumSquares[`${r},${c}`] = 'dl');
+        
         // Global variables
         let socket = null;
         let gameId = null;
@@ -228,13 +280,10 @@
             alert('Game code copied: ' + code);
         };
         
-        // Game functions
         function createGame(playerName) {
             console.log('Creating game for:', playerName);
             
-            socket = io({
-                transports: ['websocket', 'polling']
-            });
+            socket = io();
             
             socket.on('connect', () => {
                 console.log('Socket connected! ID:', socket.id);
@@ -262,9 +311,7 @@
         function joinGame(code, playerName) {
             console.log('Joining game:', code, playerName);
             
-            socket = io({
-                transports: ['websocket', 'polling']
-            });
+            socket = io();
             
             socket.on('connect', () => {
                 console.log('Socket connected! ID:', socket.id);
@@ -319,20 +366,20 @@
                 const isMyTurn = (currentTurn === myPlayerNumber);
                 const msgDiv = document.getElementById('message');
                 if (isMyTurn) {
-                    msgDiv.innerHTML = '🎯 YOUR TURN - Place tiles and click Play Word!';
+                    msgDiv.innerHTML = '🎯 YOUR TURN! Click on a tile in your rack, then click on the board to place it.';
                     msgDiv.style.background = 'rgba(76, 175, 80, 0.3)';
                 } else {
-                    msgDiv.innerHTML = `⏳ Waiting for Player ${currentTurn}'s turn...`;
+                    msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name || `Player ${currentTurn}`}'s turn...`;
                     msgDiv.style.background = 'rgba(0,0,0,0.5)';
                 }
                 
                 if (data.lastPlay) {
-                    msgDiv.innerHTML = `🎉 Player ${data.lastPlay.player} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
+                    msgDiv.innerHTML = `🎉 ${data.players[data.lastPlay.player]?.name || `Player ${data.lastPlay.player}`} played "${data.lastPlay.word}" for ${data.lastPlay.score} points!`;
                     setTimeout(() => {
                         if (isMyTurn) {
-                            msgDiv.innerHTML = '🎯 YOUR TURN - Place tiles and click Play Word!';
+                            msgDiv.innerHTML = '🎯 YOUR TURN! Click on a tile in your rack, then click on the board to place it.';
                         } else {
-                            msgDiv.innerHTML = `⏳ Waiting for Player ${currentTurn}'s turn...`;
+                            msgDiv.innerHTML = `⏳ Waiting for ${data.players[currentTurn]?.name || `Player ${currentTurn}`}'s turn...`;
                         }
                     }, 3000);
                 }
@@ -356,21 +403,42 @@
                     const cell = document.createElement('div');
                     cell.className = 'cell';
                     
+                    // Add premium square styling
+                    const premium = premiumSquares[`${row},${col}`];
+                    if (premium === 'tw') cell.classList.add('premium-tw');
+                    else if (premium === 'dw') cell.classList.add('premium-dw');
+                    else if (premium === 'tl') cell.classList.add('premium-tl');
+                    else if (premium === 'dl') cell.classList.add('premium-dl');
+                    
+                    // Show premium text on empty cells
+                    if (!boardData[row][col] && !placedTiles.get(`${row},${col}`)) {
+                        if (premium === 'tw') cell.innerHTML = 'TW';
+                        else if (premium === 'dw') cell.innerHTML = 'DW';
+                        else if (premium === 'tl') cell.innerHTML = 'TL';
+                        else if (premium === 'dl') cell.innerHTML = 'DL';
+                        else if (row === 7 && col === 7) cell.classList.add('center-star');
+                    }
+                    
                     const permanentTile = boardData[row][col];
                     const myPlacedTile = placedTiles.get(`${row},${col}`);
                     
                     if (myPlacedTile) {
-                        cell.innerText = myPlacedTile.letter;
+                        cell.innerHTML = myPlacedTile.letter;
                         cell.style.background = '#c8e6c9';
                         cell.style.border = '2px solid #4caf50';
+                        cell.style.fontSize = '20px';
+                        cell.style.fontWeight = 'bold';
                         cell.onclick = () => removeTile(row, col);
                     } else if (permanentTile) {
-                        cell.innerText = permanentTile.letter;
+                        cell.innerHTML = permanentTile.letter;
                         cell.style.background = '#fffef5';
+                        cell.style.fontSize = '20px';
+                        cell.style.fontWeight = 'bold';
+                        cell.onclick = null;
                     } else {
-                        cell.style.background = '#f5deb3';
                         if (currentTurn === myPlayerNumber) {
                             cell.onclick = () => placeTile(row, col);
+                            cell.style.cursor = 'pointer';
                         }
                     }
                     
@@ -391,7 +459,7 @@
             }
             
             if (selectedTileIndex === null) {
-                alert('Select a tile from your rack first!');
+                alert('First, click on a tile in your rack to select it!');
                 return;
             }
             
@@ -425,7 +493,7 @@
             rackDiv.innerHTML = '';
             
             if (!myRack || myRack.length === 0) {
-                rackDiv.innerHTML = '<div style="color:#999;">No tiles in rack</div>';
+                rackDiv.innerHTML = '<div style="color:#999; padding:20px;">No tiles in rack</div>';
                 return;
             }
             
@@ -435,7 +503,19 @@
                 if (selectedTileIndex === index) {
                     tileDiv.classList.add('selected');
                 }
-                tileDiv.innerText = tile === '?' ? '?' : tile;
+                tileDiv.innerHTML = tile === '?' ? '?' : tile;
+                
+                // Add score indicator
+                const scores = {A:1,B:3,C:3,D:2,E:1,F:4,G:2,H:4,I:1,J:8,K:5,L:1,M:3,N:1,O:1,P:3,Q:10,R:1,S:1,T:1,U:1,V:4,W:4,X:8,Y:4,Z:10,'?':0};
+                const scoreSpan = document.createElement('span');
+                scoreSpan.style.position = 'absolute';
+                scoreSpan.style.bottom = '3px';
+                scoreSpan.style.right = '5px';
+                scoreSpan.style.fontSize = '12px';
+                scoreSpan.style.color = '#666';
+                scoreSpan.innerHTML = scores[tile] || 1;
+                tileDiv.appendChild(scoreSpan);
+                
                 tileDiv.onclick = () => {
                     if (currentTurn !== myPlayerNumber) {
                         alert('Not your turn!');
@@ -498,25 +578,30 @@
         
         function exchangeTile() {
             if (selectedTileIndex === null) {
-                alert('Select a tile to exchange');
+                alert('Click on a tile in your rack to select it for exchange');
                 return;
             }
             
             const tile = myRack[selectedTileIndex];
+            console.log('Exchanging tile:', tile);
+            
             socket.emit('exchangeTiles', {
                 gameId: gameId,
                 tiles: [tile]
             }, (response) => {
+                console.log('Exchange response:', response);
                 if (response && response.success) {
                     selectedTileIndex = null;
                 } else {
-                    alert('Exchange failed');
+                    alert('Exchange failed: ' + (response?.error || 'Unknown error'));
                 }
             });
         }
         
         function passTurn() {
+            console.log('Passing turn');
             socket.emit('passTurn', { gameId: gameId }, (response) => {
+                console.log('Pass response:', response);
                 if (response && response.success) {
                     recallTiles();
                 }
@@ -529,7 +614,7 @@
         document.getElementById('exchangeBtn').onclick = exchangeTile;
         document.getElementById('passBtn').onclick = passTurn;
         
-        console.log('Game page loaded!');
+        console.log('Game page loaded! Board size: 15x15');
     </script>
 </body>
 </html>

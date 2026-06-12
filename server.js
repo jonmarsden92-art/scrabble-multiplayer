@@ -12,19 +12,12 @@ const io = socketIO(server, {
   }
 });
 
-// Serve index.html from current directory
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Serve socket.io client library
-app.get('/socket.io/socket.io.js', (req, res) => {
-  res.sendFile(path.join(__dirname, 'node_modules', 'socket.io-client', 'dist', 'socket.io.js'));
-});
-
-// Game state storage
+// Game storage
 const games = new Map();
-const players = new Map();
 
 const BOARD_SIZE = 15;
 const RACK_SIZE = 7;
@@ -75,232 +68,261 @@ function createEmptyBoard() {
   return Array(BOARD_SIZE).fill().map(() => Array(BOARD_SIZE).fill(null));
 }
 
-function getLetterScore(letter) {
-  if (letter === '?') return 0;
-  const found = letterDistribution.find(l => l.letter === letter);
-  return found ? found.score : 1;
-}
-
-function isValidWord(word) {
-  if (word.length < 2) return true;
-  const commonWords = new Set([
-    'CAT', 'DOG', 'BIRD', 'FISH', 'HAT', 'BAT', 'RAT', 'CAR', 'BUS', 'TRAIN', 
-    'HOUSE', 'TREE', 'FLOWER', 'SUN', 'MOON', 'STAR', 'HELLO', 'WORLD', 'GAME', 
-    'PLAY', 'WORD', 'TILE', 'RACK', 'SCORE', 'TURN', 'MULTI', 'PLAYER', 'APPLE', 
-    'BANANA', 'CHERRY', 'GRAPE', 'LEMON', 'ORANGE', 'PEAR', 'RED', 'BLUE', 'GREEN',
-    'YELLOW', 'BLACK', 'WHITE', 'HAPPY', 'SAD', 'BIG', 'SMALL', 'FAST', 'SLOW',
-    'HOT', 'COLD', 'WET', 'DRY', 'RUN', 'WALK', 'JUMP', 'SWIM', 'FLY', 'SIT',
-    'STAND', 'EAT', 'DRINK', 'SLEEP', 'MOM', 'DAD', 'SCHOOL', 'BOOK', 'PENCIL',
-    'PAPER', 'COMPUTER', 'PHONE', 'MUSIC', 'MOVIE', 'SPORT', 'SOCCER', 'BASEBALL'
-  ]);
-  return commonWords.has(word.toUpperCase());
-}
-
-function createGame(gameId, player1SocketId, player1Name) {
-  const bag = createLetterBag();
-  const board = createEmptyBoard();
-  const { drawn: rack1, bag: newBag1 } = drawLetters([...bag], RACK_SIZE);
-  const { drawn: rack2, bag: newBag2 } = drawLetters(newBag1, RACK_SIZE);
-  
+function getGameState(game) {
   return {
-    id: gameId,
-    board: board,
+    board: game.board,
     players: {
-      1: { socketId: player1SocketId, name: player1Name || 'Player 1', score: 0, rack: rack1 },
-      2: { socketId: null, name: null, score: 0, rack: [] }
+      1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
+      2: game.players[2] ? { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack } : { name: 'Waiting...', score: 0, rack: [] }
     },
-    currentTurn: 1,
-    bag: newBag2,
-    status: 'waiting'
+    currentTurn: game.currentTurn,
+    status: game.status,
+    bagCount: game.bag.length
   };
-}
-
-function joinGame(gameId, socketId, playerName) {
-  const game = games.get(gameId);
-  if (!game) return { success: false, error: 'Game not found' };
-  if (game.players[2].socketId !== null) return { success: false, error: 'Game is full' };
-  
-  const { drawn: rack2, bag: newBag } = drawLetters([...game.bag], RACK_SIZE);
-  game.players[2] = { socketId: socketId, name: playerName || 'Player 2', score: 0, rack: rack2 };
-  game.bag = newBag;
-  game.status = 'playing';
-  
-  return { success: true, game };
 }
 
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
   
-  socket.on('createGame', ({ playerName }, callback) => {
+  // Create new game
+  socket.on('createGame', ({ playerName }) => {
     const gameId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    const game = createGame(gameId, socket.id, playerName);
+    const bag = createLetterBag();
+    const board = createEmptyBoard();
+    
+    // Draw initial racks
+    const { drawn: rack1, bag: newBag1 } = drawLetters([...bag], RACK_SIZE);
+    const { drawn: rack2, bag: newBag2 } = drawLetters(newBag1, RACK_SIZE);
+    
+    const game = {
+      id: gameId,
+      board: board,
+      players: {
+        1: { socketId: socket.id, name: playerName, score: 0, rack: rack1 },
+        2: null
+      },
+      currentTurn: 1,
+      bag: newBag2,
+      status: 'waiting'
+    };
+    
     games.set(gameId, game);
-    players.set(socket.id, { gameId, playerNum: 1 });
     socket.join(gameId);
     
-    callback({
+    console.log(`Game created: ${gameId} by ${playerName}`);
+    
+    socket.emit('gameCreated', {
       success: true,
       gameId: gameId,
       playerNum: 1,
-      gameState: {
-        board: game.board,
-        players: {
-          1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-          2: { name: 'Waiting for player...', score: 0, rack: [] }
-        },
-        currentTurn: game.currentTurn,
-        status: game.status
-      }
+      gameState: getGameState(game)
     });
-    console.log(`Game created: ${gameId} by ${playerName}`);
   });
   
-  socket.on('joinGame', ({ gameId, playerName }, callback) => {
-    const result = joinGame(gameId, socket.id, playerName);
-    if (result.success) {
-      const game = result.game;
-      players.set(socket.id, { gameId, playerNum: 2 });
-      socket.join(gameId);
-      
-      io.to(gameId).emit('gameStateUpdate', {
-        board: game.board,
-        players: {
-          1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-          2: { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack }
-        },
-        currentTurn: game.currentTurn,
-        status: game.status,
-        bagCount: game.bag.length
-      });
-      
-      callback({ success: true, playerNum: 2 });
-      console.log(`${playerName} joined game ${gameId}`);
-    } else {
-      callback({ success: false, error: result.error });
-    }
-  });
-  
-  socket.on('playWord', ({ gameId, word, placements, score }, callback) => {
+  // Join existing game
+  socket.on('joinGame', ({ gameId, playerName }) => {
     const game = games.get(gameId);
-    if (!game) return callback({ success: false, error: 'Game not found' });
     
-    const playerData = players.get(socket.id);
-    if (!playerData || playerData.gameId !== gameId) return callback({ success: false, error: 'Not in game' });
-    if (game.currentTurn !== playerData.playerNum) return callback({ success: false, error: 'Not your turn' });
-    if (!isValidWord(word)) return callback({ success: false, error: 'Invalid word' });
+    if (!game) {
+      socket.emit('joinFailed', { error: 'Game not found' });
+      return;
+    }
     
+    if (game.players[2] !== null) {
+      socket.emit('joinFailed', { error: 'Game is full' });
+      return;
+    }
+    
+    // Draw rack for player 2
+    const { drawn: rack2, bag: newBag } = drawLetters([...game.bag], RACK_SIZE);
+    
+    game.players[2] = {
+      socketId: socket.id,
+      name: playerName,
+      score: 0,
+      rack: rack2
+    };
+    game.bag = newBag;
+    game.status = 'playing';
+    
+    socket.join(gameId);
+    
+    console.log(`${playerName} joined game ${gameId}`);
+    
+    // Notify both players
+    const gameState = getGameState(game);
+    
+    // Send to player 2
+    socket.emit('gameJoined', {
+      success: true,
+      playerNum: 2,
+      gameState: gameState
+    });
+    
+    // Send updated state to player 1
+    io.to(game.players[1].socketId).emit('gameStateUpdate', gameState);
+    
+    // Send to player 2 as well
+    socket.emit('gameStateUpdate', gameState);
+  });
+  
+  // Play word
+  socket.on('playWord', ({ gameId, word, placements, score }) => {
+    const game = games.get(gameId);
+    if (!game) {
+      socket.emit('playFailed', { error: 'Game not found' });
+      return;
+    }
+    
+    let playerNum = null;
+    if (game.players[1] && game.players[1].socketId === socket.id) playerNum = 1;
+    else if (game.players[2] && game.players[2].socketId === socket.id) playerNum = 2;
+    
+    if (!playerNum) {
+      socket.emit('playFailed', { error: 'Not in game' });
+      return;
+    }
+    
+    if (game.currentTurn !== playerNum) {
+      socket.emit('playFailed', { error: 'Not your turn' });
+      return;
+    }
+    
+    // Apply placements to board
     for (const [pos, letter] of placements) {
       const [row, col] = pos.split(',').map(Number);
-      game.board[row][col] = { letter: letter, playedBy: playerData.playerNum };
+      game.board[row][col] = { letter: letter, playedBy: playerNum };
     }
     
-    game.players[playerData.playerNum].score += score;
-    if (word.length === 7) game.players[playerData.playerNum].score += BINGO_BONUS;
+    // Update score
+    game.players[playerNum].score += score;
+    if (word.length === 7) game.players[playerNum].score += BINGO_BONUS;
     
+    // Remove played letters from rack
     const wordLetters = word.split('');
-    const currentRack = [...game.players[playerData.playerNum].rack];
+    const currentRack = [...game.players[playerNum].rack];
     for (let letter of wordLetters) {
-      const index = currentRack.findIndex(l => l === letter || (l === '?' && letter !== '?'));
+      const index = currentRack.findIndex(l => l === letter);
       if (index !== -1) currentRack.splice(index, 1);
     }
     
+    // Draw new letters
     const { drawn, bag } = drawLetters([...game.bag], wordLetters.length);
-    game.players[playerData.playerNum].rack = [...currentRack, ...drawn];
+    game.players[playerNum].rack = [...currentRack, ...drawn];
     game.bag = bag;
+    
+    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    io.to(gameId).emit('gameStateUpdate', {
-      board: game.board,
-      players: {
-        1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-        2: { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack }
-      },
-      currentTurn: game.currentTurn,
-      status: game.status,
-      bagCount: game.bag.length,
-      lastPlay: { player: playerData.playerNum, word: word, score: score }
-    });
+    // Broadcast update to both players
+    const gameState = getGameState(game);
+    gameState.lastPlay = { player: playerNum, word: word, score: score };
     
-    callback({ success: true });
+    io.to(gameId).emit('gameStateUpdate', gameState);
+    socket.emit('playSuccess', { success: true });
   });
   
-  socket.on('exchangeTiles', ({ gameId, tiles }, callback) => {
+  // Exchange tiles
+  socket.on('exchangeTiles', ({ gameId, tiles }) => {
     const game = games.get(gameId);
-    if (!game) return callback({ success: false, error: 'Game not found' });
+    if (!game) {
+      socket.emit('exchangeFailed', { error: 'Game not found' });
+      return;
+    }
     
-    const playerData = players.get(socket.id);
-    if (!playerData || playerData.gameId !== gameId) return callback({ success: false, error: 'Not in game' });
-    if (game.currentTurn !== playerData.playerNum) return callback({ success: false, error: 'Not your turn' });
-    if (game.bag.length < tiles.length) return callback({ success: false, error: 'Not enough tiles' });
+    let playerNum = null;
+    if (game.players[1] && game.players[1].socketId === socket.id) playerNum = 1;
+    else if (game.players[2] && game.players[2].socketId === socket.id) playerNum = 2;
     
-    const currentRack = [...game.players[playerData.playerNum].rack];
+    if (!playerNum) {
+      socket.emit('exchangeFailed', { error: 'Not in game' });
+      return;
+    }
+    
+    if (game.currentTurn !== playerNum) {
+      socket.emit('exchangeFailed', { error: 'Not your turn' });
+      return;
+    }
+    
+    if (game.bag.length < tiles.length) {
+      socket.emit('exchangeFailed', { error: 'Not enough tiles in bag' });
+      return;
+    }
+    
+    // Remove tiles from rack
+    const currentRack = [...game.players[playerNum].rack];
     for (let tile of tiles) {
       const index = currentRack.findIndex(t => t === tile);
       if (index !== -1) currentRack.splice(index, 1);
     }
     
+    // Add exchanged tiles back to bag and shuffle
     game.bag.push(...tiles);
     game.bag = shuffleArray(game.bag);
     
+    // Draw new tiles
     const { drawn, bag } = drawLetters([...game.bag], tiles.length);
-    game.players[playerData.playerNum].rack = [...currentRack, ...drawn];
+    game.players[playerNum].rack = [...currentRack, ...drawn];
     game.bag = bag;
+    
+    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    io.to(gameId).emit('gameStateUpdate', {
-      board: game.board,
-      players: {
-        1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-        2: { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack }
-      },
-      currentTurn: game.currentTurn,
-      status: game.status,
-      bagCount: game.bag.length
-    });
-    
-    callback({ success: true });
+    // Broadcast update
+    const gameState = getGameState(game);
+    io.to(gameId).emit('gameStateUpdate', gameState);
+    socket.emit('exchangeSuccess', { success: true });
   });
   
-  socket.on('passTurn', ({ gameId }, callback) => {
+  // Pass turn
+  socket.on('passTurn', ({ gameId }) => {
     const game = games.get(gameId);
-    if (!game) return callback({ success: false, error: 'Game not found' });
+    if (!game) {
+      socket.emit('passFailed', { error: 'Game not found' });
+      return;
+    }
     
-    const playerData = players.get(socket.id);
-    if (!playerData || playerData.gameId !== gameId) return callback({ success: false, error: 'Not in game' });
-    if (game.currentTurn !== playerData.playerNum) return callback({ success: false, error: 'Not your turn' });
+    let playerNum = null;
+    if (game.players[1] && game.players[1].socketId === socket.id) playerNum = 1;
+    else if (game.players[2] && game.players[2].socketId === socket.id) playerNum = 2;
     
+    if (!playerNum) {
+      socket.emit('passFailed', { error: 'Not in game' });
+      return;
+    }
+    
+    if (game.currentTurn !== playerNum) {
+      socket.emit('passFailed', { error: 'Not your turn' });
+      return;
+    }
+    
+    // Switch turn
     game.currentTurn = game.currentTurn === 1 ? 2 : 1;
     
-    io.to(gameId).emit('gameStateUpdate', {
-      board: game.board,
-      players: {
-        1: { name: game.players[1].name, score: game.players[1].score, rack: game.players[1].rack },
-        2: { name: game.players[2].name, score: game.players[2].score, rack: game.players[2].rack }
-      },
-      currentTurn: game.currentTurn,
-      status: game.status,
-      bagCount: game.bag.length
-    });
-    
-    callback({ success: true });
+    // Broadcast update
+    const gameState = getGameState(game);
+    io.to(gameId).emit('gameStateUpdate', gameState);
+    socket.emit('passSuccess', { success: true });
   });
   
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    const playerInfo = players.get(socket.id);
-    if (playerInfo) {
-      const game = games.get(playerInfo.gameId);
-      if (game) {
-        socket.to(playerInfo.gameId).emit('playerDisconnected', { playerNum: playerInfo.playerNum });
-        setTimeout(() => {
-          const room = io.sockets.adapter.rooms.get(playerInfo.gameId);
-          if (!room || room.size === 0) {
-            games.delete(playerInfo.gameId);
-            console.log(`Game ${playerInfo.gameId} deleted`);
-          }
-        }, 5000);
+    
+    // Find and clean up games
+    for (const [gameId, game] of games.entries()) {
+      if (game.players[1] && game.players[1].socketId === socket.id) {
+        if (game.players[2]) {
+          io.to(game.players[2].socketId).emit('playerDisconnected', { playerNum: 1 });
+        }
+        games.delete(gameId);
+        console.log(`Game ${gameId} deleted - player 1 disconnected`);
+      } else if (game.players[2] && game.players[2].socketId === socket.id) {
+        if (game.players[1]) {
+          io.to(game.players[1].socketId).emit('playerDisconnected', { playerNum: 2 });
+        }
+        games.delete(gameId);
+        console.log(`Game ${gameId} deleted - player 2 disconnected`);
       }
-      players.delete(socket.id);
     }
   });
 });
